@@ -40,4 +40,7 @@ Copy the file `1.run.sbatch` to folder `/apps/param` and then submit a preproces
 sbatch -N 2 1.run.sbatch
 ```
 
+Command will return job ID. If you stay in the same directory where you ran sbatch command above you can find stdout of the job in file `1.run.sbatch_<job ID>.out` and stderr in `1.run.sbatch_<job ID>.err`.
+
+
 You will see NCCL performance in logs, refer to [NCCL-tests](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) documentation to udnerstand the difference between AlbBW and BusBw. Review [documentation](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd/train/comms/pt) for other CLI parameters and other benchmarks in [param repository](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd) for more communication and computation tests.

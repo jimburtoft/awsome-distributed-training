@@ -19,8 +19,7 @@ export FI_EFA_ENABLE_SHM_TRANSFER=1
 export NCCL_PROTO=simple
 export NCCL_DEBUG=INFO
 
-
-srun --container-image=/admin/lipovsek/comm/pt/pt.sqsh -l torchrun \
+srun --container-image=/apps/param.sqsh -l torchrun \
    --nproc_per_node $SLURM_GPUS_PER_NODE \
    --nnodes $WORLD_SIZE \
    --rdzv_id $SLURM_JOB_ID \
