@@ -5,8 +5,7 @@
 #SBATCH --gpus-per-node=8 #
 #SBATCH --wait-all-nodes=1 # wait for all nodes before running the job
 #SBATCH --job-name=param_benchmark # name of your job
-#SBATCH --output=%x_%j.out
-#SBATCH --error=%x_%j.err
+#SBATCH --output=%x_%j.out # declare output, merge both stdout and stderr
 
 set -ex;
 
