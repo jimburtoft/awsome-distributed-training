@@ -27,7 +27,7 @@ To build the container:
    ```
 3. Convert the container image to a squash file via Enroot
    ```bash
-   enroot import -o /apps/param.sqsh  dockerd:/param
+   enroot import -o /apps/param.sqsh  dockerd://param
    ```
    The file will be stored in the `/apps` directory.
 
@@ -40,4 +40,4 @@ Copy the file `1.run.sbatch` to folder `/apps/param` and then submit a preproces
 sbatch -N 2 1.run.sbatch
 ```
 
-You will see NCCL performance in logs, refer to [NCCL-tests](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) documentation to udnerstand the difference between AlbBW and BusBw.
+You will see NCCL performance in logs, refer to [NCCL-tests](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) documentation to udnerstand the difference between AlbBW and BusBw. Review [documentation](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd/train/comms/pt) for other CLI parameters and other benchmarks in [param repository](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd) for more communication and computation tests.
