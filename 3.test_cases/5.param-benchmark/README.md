@@ -39,9 +39,7 @@ Ensure that the submission file `1.param-benchmark.sbatch` has been copied to yo
 sbatch -N 2 1.param-benchmark.sbatch
 ```
 
-
-
-The command will return a job ID. If you stay in the same directory where `sbatch` was called, assuming that your job is executing (or has executed) you will find text output files with the standard output and standard error output of your job. These will be named   you find your job output files stdout of the job in file `1.run.sbatch_<job ID>.out` and stderr in `1.run.sbatch_<job ID>.err`.
+The command will return a job ID. If you stay in the same directory where `sbatch` was called, assuming that your job is executing (or has executed) you will find a output file for your job names `param_benchmark_<ID>.out` where ID corresponds to your job ID.
 
 > **Note**: the number of nodes used for the job is defined via the command line with the option and argument `-N 2`. An alternative is to set it in the `sbatch` file as the directive `#SBATCH -N 2`.
 
