@@ -30,6 +30,7 @@ The [AWS Deep learning containers](https://aws.amazon.com/machine-learning/conta
    ```
    The file will be stored in the `/apps` directory.
 
+> **Note**: We use specific commit due to lack of versioning of param benchmark, which would otherwise be used to pin the dependency.
 
 ## 2. Running the model
 
