@@ -1,5 +1,5 @@
 # DDP PyTorch
-[Param benchmark](https://github.com/facebookresearch/param/tree/main) is aa PyTorch benchmark for computation and communication. This guide only addresses communications performances.
+[Param benchmark](https://github.com/facebookresearch/param/tree/main) is a PyTorch benchmark for computation ([GEMM, MLP, EmbeddingBag](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd/train/compute/pt)), communication ([NCCL, DLRMs, TraceReplay](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd/train/comms/pt)), workloads ([DLRM](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd/train/workloads), [training](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd/train/compute/python)). This guide only addresses communications but serves as an template for other tests.
 
 # 0. Preparation
 
@@ -46,5 +46,4 @@ We add `--export=NONE` parameter to make sure any conflicting environment variab
 
 > **Note**: the number of nodes used for the job is defined via the command line with the option and argument `-N 2`. An alternative is to set it in the `sbatch` file as the directive `#SBATCH -N 2`.
 
-
-You will see NCCL performance in logs, refer to [NCCL-tests](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) documentation to understand the difference between AlbBW and BusBw. Review [documentation](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd/train/comms/pt) for other CLI parameters and other benchmarks in the [Param repository repository](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd) for more communication and computation tests.
+You will see NCCL test outputs in the logs (in your local directory), refer to [NCCL-tests](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) documentation to understand the difference between `AlbBW` and `BusBw`. Review the Param [documentation](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd/train/comms/pt) for other CLI parameters and other benchmarks in the [repository](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd) for more communication and computation tests (example [here](https://github.com/facebookresearch/param/blob/6236487e8969838822b52298c2a2318f6ac47bbd/train/compute/pt/README.md) or [here](https://github.com/facebookresearch/param/tree/6236487e8969838822b52298c2a2318f6ac47bbd/train/comms/pt)).
