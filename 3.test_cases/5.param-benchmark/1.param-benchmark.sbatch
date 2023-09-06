@@ -31,12 +31,10 @@ export FI_EFA_ENABLE_SHM_TRANSFER=1
 export NCCL_ASYNC_ERROR_HANDLING=1
 export NCCL_DEBUG=INFO
 
-RDV_ADDR=$(hostname)
-
 srun --container-image=$IMAGE -l torchrun \
    --nproc_per_node $SLURM_GPUS_PER_NODE \
    --nnodes $SLURM_JOB_NUM_NODES \
    --rdzv_id $SLURM_JOB_ID \
    --rdzv_backend c10d \
-   --rdzv_endpoint $RDV_ADDR \
+   --rdzv_endpoint $(hostname):0 \
    /param/train/comms/pt/comms.py --b=8 --e=2GB --f=2 --collective=all_reduce --num_iters=100
