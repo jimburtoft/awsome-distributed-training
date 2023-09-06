@@ -37,10 +37,12 @@ The [AWS Deep learning containers](https://aws.amazon.com/machine-learning/conta
 Ensure that the submission file `1.param-benchmark.sbatch` has been copied to your cluster and your shell points to the directory where this file is present. Run the Param benchmark on 2 nodes as follows:
 
 ```bash
-sbatch -N 2 1.param-benchmark.sbatch
+sbatch -N 2 --export=NONE 1.param-benchmark.sbatch
 ```
 
 The command will return a job ID. If you stay in the same directory where `sbatch` was called, assuming that your job is executing (or has executed) you will find a output file for your job names `param_benchmark_<ID>.out` where ID corresponds to your job ID.
+
+We add `--export=NONE` parameter to make sure any conflicting environment variable from AMI is not exported to container.
 
 > **Note**: the number of nodes used for the job is defined via the command line with the option and argument `-N 2`. An alternative is to set it in the `sbatch` file as the directive `#SBATCH -N 2`.
 
