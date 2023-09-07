@@ -3,6 +3,7 @@
 #SBATCH --exclusive # the job has exclusive use of the instances it uses
 #SBATCH --gres=gpu:8 # reserve 8 GPU resources / instance / node
 #SBATCH --gpus-per-node=8 #
+#SBATCH --nodes=2 # how many nodes, you can override on the CLI
 #SBATCH --wait-all-nodes=1 # wait for all nodes before running the job
 #SBATCH --job-name=param_benchmark # name of your job
 #SBATCH --output=%x_%j.out # declare output, merge both stdout and stderr
@@ -38,3 +39,5 @@ srun --container-image=$IMAGE -l torchrun \
    --rdzv_backend c10d \
    --rdzv_endpoint $(hostname):0 \
    /param/train/comms/pt/comms.py --b=8 --e=2GB --f=2 --collective=all_reduce --num_iters=100
+
+
