@@ -16,7 +16,8 @@ It is recommended that you use the templates in the architectures [directory](..
 ## 1. Build the Squash file
 
 We will use [AWS Deep learning containers](https://aws.amazon.com/machine-learning/containers/), prebuilt containers for AWS environment (for example PyTorch with EFA support for NCCL operations)
-To build the container:
+
+Run the following steps to build the container:
 
 1. Login to AWS ECR with command bellow
    ```bash
