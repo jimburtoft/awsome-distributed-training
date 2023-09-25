@@ -17,12 +17,14 @@ class ToyModel(nn.Module):
 def demo_basic():
     dist.init_process_group("nccl")
     rank = dist.get_rank()
-    print(f"Start running basic DDP example on rank {rank}.")
     device_id = f"cuda:{rank % torch.cuda.device_count()}"
+
+    print(f"Start running basic DDP example on rank {rank}.")
     print("Distributed training variables:")
     for env_key in ("LOCAL_RANK", "RANK", "GROUP_RANK", "LOCAL_WORLD_SIZE", "WORLD_SIZE"):
         print(f"{env_key}: {os.environ.get(env_key, '')}")
     print("#############")
+
     model = ToyModel().to(device_id)
     ddp_model = DDP(model, device_ids=[device_id])
     loss_fn = nn.MSELoss()

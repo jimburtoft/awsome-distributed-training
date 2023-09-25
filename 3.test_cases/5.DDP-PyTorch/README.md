@@ -1,5 +1,5 @@
 # DDP PyTorch
-This is an example of minimal PyTorch DDP code using a toy example to validate if your cluster to is ready to run Pytorch distributed.
+This is an example of minimal PyTorch DDP code using a toy example to validate if your cluster to is ready to run Pytorch distributed. This test case is based on [this example](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html) from PyTorch.
 
 # 0. Preparation
 
