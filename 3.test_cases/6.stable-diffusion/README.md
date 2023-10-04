@@ -109,9 +109,6 @@ We ran tests on P4de (A100 80GB) and P5 (H100 80GB) machines and here is a compa
 |   20   |     8     | No  |      197.90    |     361.15    |  1.83x |
 |   32   |     8     | Yes |      204.22    |     385.31    |  1.89x |
 
-
-Overall, we got a throughput of 83.36 images/sec. This is sub-par because MosaicML's reported throughput for a s
-
 ## 2. Multi Node Tests
 
 ### 2.1 Multi Node Results
