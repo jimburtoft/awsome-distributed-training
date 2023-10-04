@@ -99,11 +99,10 @@ docker run --rm -it --gpus all nvidia/cuda:12.2.0-devel-ubuntu20.04 watch nvidia
 
 We ran tests on P4de (A100 80GB) and P5 (H100 80GB) machines and here is a comparison:
 
-| Parameters             | P4de Throughput| P5 Throughput | Ratio  |
-| ---------------------- | -------------- | ------------- | ------ |
-|Micro BS|Num_Workers|EMA|    Images/sec  |    Images/sec |        |
-| ---------------------- | -------------- | ------------- | ------ |
-|    4   |     8    | Yes|      142.69    |     189.28    |  1.32x |
+|Micro BS|num_workers| EMA | P4de Throughput| P5 Throughput | Ratio  |
+|:------:|:---------:|:---:| :------------: | :-----------: |:------:|
+|    4   |     8     | Yes |      142.69    |     189.28    |  1.32x |
+|    8   |     8     | Yes |      173.89    |     289.19    |  1.66x |
 
 
 
