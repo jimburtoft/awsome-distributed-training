@@ -97,7 +97,10 @@ docker run --rm -it --gpus all nvidia/cuda:12.2.0-devel-ubuntu20.04 watch nvidia
 
 ### 1.2 Single Node Training Benchmarks
 
-We ran tests on P4de (A100 80GB) and P5 (H100 80GB) machines and here is a comparison:
+We ran tests on P4de (A100 80GB) and P5 (H100 80GB) machines and here is a comparison.
+
+<center><img src="3.test_cases/6.stable-diffusion/single-node.png" width="80%"/> </br>
+</center>
 
 |Micro BS|num_workers| EMA | P4de Throughput| P5 Throughput | Ratio  |
 |:------:|:---------:|:---:| :------------: | :-----------: |:------:|
