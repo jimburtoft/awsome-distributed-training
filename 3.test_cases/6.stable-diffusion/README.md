@@ -28,7 +28,7 @@ source /home/ubuntu/.bashrc
 
 When testing the latest version of MosaicML's Composer, we found that different ways to set up the environment with a PyTorch Nightly conda environment or a Nvidia PyTorch Docker container. For single or multi-node testing, you could use either to run distributed training. Next, we present both approaches.
 
-The `single-node` folder has the shell script `create-conda.sh` which installs the PyTorch nightly distribution for Cuda 12.1 and the `diffusers, transformers` and weights and biases libraries and also clones the Composer repository. Before installing Composer, we need to avoid some torch and torchvision version checks by commenting out those lines in `composer/setup.py` so it looks like:
+The `single-node` folder has the shell script [`create-conda.sh`](https://github.com/aws-samples/awsome-distributed-training/blob/stable-diffusion/3.test_cases/6.stable-diffusion/single-node/create-conda.sh) which installs the PyTorch nightly distribution for Cuda 12.1 and the `diffusers, transformers` and weights and biases libraries and also clones the Composer repository. Before installing Composer, we need to avoid some torch and torchvision version checks by commenting out those lines in [`composer/setup.py`](https://github.com/mosaicml/composer/blob/dev/setup.py) so it looks like:
 
 
 ```bash
@@ -99,7 +99,11 @@ docker run --rm -it --gpus all nvidia/cuda:12.2.0-devel-ubuntu20.04 watch nvidia
 
 We ran tests on P4de (A100 80GB) and P5 (H100 80GB) machines and here is a comparison:
 
-
+| Parameters             | P4de Throughput| P5 Throughput | Ratio  |
+| ---------------------- | -------------- | ------------- | ------ |
+|Micro BS|Num_Workers|EMA|    Images/sec  |    Images/sec |        |
+| ---------------------- | -------------- | ------------- | ------ |
+|    4   |     8    | Yes|      142.69    |     189.28    |  1.32x |
 
 
 
