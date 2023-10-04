@@ -114,6 +114,34 @@ We ran tests on P4de (A100 80GB) and P5 (H100 80GB) machines and here is a compa
 
 ## 2. Multi Node Tests
 
+### 2.1 Multi-Node Training
+
+For the multi-node training we've created a `Dockerfile`, and Slurm submit script and a `Makefile` to build the docker image and convert it to an enroot image. To get started please follow the guide [AWS ParallelCluster Distributed Training](https://github.com/aws-samples/awsome-distributed-training/tree/main/1.architectures/2.aws-parallelcluster). Before starting this section make sure you have the following setup:
+
+* AWS ParallelCluster >= 3.7.0
+* Pyxis
+* Enroot
+* FSx Lustre Filesystem
+
+1. To get started, clone this repo and cd into the multi-node directory:
+
+```
+git clone https://github.com/aws-samples/awsome-distributed-training.git
+cd awsome-distributed-training/6.stable-diffusion/multi-node
+```
+
+Next build the docker image and convert it to a enroot sqsh file:
+
+```bash
+make # this will build the docker image and convert it to enroot
+```
+
+Now we can start training
+
+```
+sbatch 2.train.sbatch
+```
+
 ### 2.1 Multi Node Results
 
 
@@ -123,4 +151,3 @@ TODO:
 2. Implement distributed training following original implementation of stable diffusion
 3. Explore the impact of MosaicML's Exponential Moving Average implementation on training performance.
 4. Test the impact of xFormers
-
