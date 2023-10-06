@@ -2,7 +2,12 @@
 
 DISCLAIMER: The scripts presented in this repo work but I believe there is room for optimization to further accelerate distributed training
 
-We will follow MosaicML's stable diffusion benchmarking scripts provided [here](https://github.com/mosaicml/diffusion-benchmark/tree/main). 
+We will follow MosaicML's stable diffusion benchmarking scripts provided [here](https://github.com/mosaicml/diffusion-benchmark/tree/main). It uses the `'stabilityai/stable-diffusion-2-base'` model. You can check the number of parameters by executing:
+
+```bash
+python3 calculate_number_of_parameters.py
+Model has 1289.952427 M parameters and 865.910724 M trainable_params
+``` 
 
 
 Just for simplifaction of testing, we have separate scripts for Single node and Multi node Distributed Training. We will also present a comparison of throughput (images/second) achieved with P4de (A100 80GB) and P5 (H100 80GB) nodes.
