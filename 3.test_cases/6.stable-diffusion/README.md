@@ -117,6 +117,26 @@ We ran tests on P4de (A100 80GB) and P5 (H100 80GB) machines and here is a compa
 |   20   |     8     | No  |      197.90    |     361.15    |  1.83x |
 |   32   |     8     | Yes |      204.22    |     385.31    |  1.89x |
 
+### Scaled Dot Product Attention
+
+HuggingFace Diffusers has a set_attn_processor method that you can use to plug and play different attention processors. A list of attention processors can be found [here](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py)
+
+You can try a different Attention Processor like below:
+
+```
+from diffusers.models.attention_processor import AttnProcessor
+    self.unet = UNet2DConditionModel.from_pretrained(''stabilityai/stable-diffusion-2-base'', subfolder='unet')
+    self.unet.set_attn_processor(AttnProcessor())
+```
+AttnProcessor2_0 which is a Processor for implementing scaled dot-product attention is enabled by default if you're using PyTorch 2.0.
+
+The older self.unet.set_attn_processor(AttnProcessor()) gives Cuda OOM error with a batch size of 32 while with `AttnProcessor2_0()` is able to run with a batch size of 32 and yield 385 images/sec throughput 
+
+More details on this can be found here: https://pytorch.org/blog/accelerated-diffusers-pt-20/
+
+
+
+
 ## 2. Multi Node Tests
 
 ### 2.1 Multi-Node Training
