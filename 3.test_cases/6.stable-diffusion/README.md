@@ -117,7 +117,7 @@ We ran tests on P4de (A100 80GB) and P5 (H100 80GB) machines and here is a compa
 |   20   |     8     | No  |      197.90    |     361.15    |  1.83x |
 |   32   |     8     | Yes |      204.22    |     385.31    |  1.89x |
 
-### Scaled Dot Product Attention
+#### Scaled Dot Product Attention
 
 HuggingFace Diffusers has a set_attn_processor method that you can use to plug and play different attention processors. A list of attention processors can be found [here](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py)
 
