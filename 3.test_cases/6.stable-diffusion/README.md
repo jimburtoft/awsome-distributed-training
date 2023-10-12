@@ -125,8 +125,9 @@ You can try a different Attention Processor like below:
 
 ```
 from diffusers.models.attention_processor import AttnProcessor
-    self.unet = UNet2DConditionModel.from_pretrained(''stabilityai/stable-diffusion-2-base'', subfolder='unet')
-    self.unet.set_attn_processor(AttnProcessor())
+
+self.unet = UNet2DConditionModel.from_pretrained(''stabilityai/stable-diffusion-2-base'', subfolder='unet')
+self.unet.set_attn_processor(AttnProcessor())
 ```
 AttnProcessor2_0 which is a Processor for implementing scaled dot-product attention is enabled by default if you're using PyTorch 2.0.
 
