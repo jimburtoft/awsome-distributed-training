@@ -1,3 +1,40 @@
+# Accelerate Distributed Training of Vision Transformers with Nvidia DALI dataloaders
+
+
+In this project, we will show how you can accelerate distributed training of [Vision Transformers](https://github.com/google-research/vision_transformer) with [NVIDIA DALI](https://developer.nvidia.com/dali) dataloaders.
+
+Dataloaders built with Nvidia DALI should be applicable to any deep learning models which need to read and pre-process images. The key differentiator with Nvidia DALI dataloaders is that it uses GPUs to read and pre-process images compared to PyTorch dataloaders which uses CPUs.
+
+We will follow the [4.DDP](https://github.com/aws-samples/awsome-distributed-training/tree/main/3.test_cases/4.DDP) example to set up distributed data parallel training of [scDINO](https://github.com/JacobHanimann/scDINO/tree/master) and show performance gains with [NVIDIA DALI](https://developer.nvidia.com/dali) dataloaders compared to PyTorch CPU dataloaders.
+
+## 0. Prerequisites
+
+We assume that a ParallelCluster is created with GPU based instances and a [Fsx for Lustre](https://aws.amazon.com/fsx/lustre/) filesystem is mounted. 
+
+## 1. Set up Environment Variables
+
+
+## 2. Get Training Data
+
+```bash
+cd /fsx
+echo "Downloading Deep Phenotyping PMBC Image Set Data ..."
+wget https://www.research-collection.ethz.ch/bitstream/handle/20.500.11850/343106/DeepPhenotype_PBMC_ImageSet_YSeverin.zip
+unzip DeepPhenotype_PBMC_ImageSet_YSeverin.zip -d ./data
+
+rm DeepPhenotype_PBMC_ImageSet_YSeverin.zip
+
+```
+
+
+
+
+
+
+
+
+
+
 # Accelerate Distributed Training of PyTorch Deep Learning Models with Nvidia DALI dataloaders
 In this repo, we will show some results benchmarking data loading and pre-processing speedups obtained with Dataloaders created with [NVIDIA DALI](https://developer.nvidia.com/dali). For distributed training applications, especially those that need to read images and pre-process them, data loading could end up being a bottleneck as traditionally these loading and pre-processing tasks are CPU bound. To this end, we can leverage multi-processing by providing [`num_workers`](https://pytorch.org/docs/stable/data.html) in a PyTorch DataLoader but often that is not enough. With NVIDIA DALI, one can use the existing GPUs to do the data loading and pre-processing of the images that significantly accerelerates data loading, preprocessing and thereby distributed training. Next we will show that for a distributed training example with multi-channel images, average time per epoch can be reduced by upto 95%!
 
