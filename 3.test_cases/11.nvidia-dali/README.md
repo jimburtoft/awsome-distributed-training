@@ -25,6 +25,38 @@ unzip DeepPhenotype_PBMC_ImageSet_YSeverin.zip -d ./data
 rm DeepPhenotype_PBMC_ImageSet_YSeverin.zip
 
 ```
+Once the data is downloaded you can count the number of images in Training and Test folders as below:
+
+```bash
+find ${DATA_PATH}/DeepPhenotype_PBMC_ImageSet_YSeverin/Training/ -type f | wc -l 
+find ${DATA_PATH}/DeepPhenotype_PBMC_ImageSet_YSeverin/Test/ -type f | wc -l 
+```
+
+This dataset has 89572 images in the Training set and 24023 images in the test set
+
+## 3. Build Docker Image
+
+Next we will build a Docker image that will install the required dependencies for DALI and for the scDINO model. Fortunately, DALI is included in the NGC PyTorch containers provided by the `$BASE_IMAGE` above. Copy the [requirements.txt](https://github.com/aws-samples/awsome-distributed-training/blob/main/3.test_cases/4.DDP/requirements.txt) file from the `4.DDP` example first as below:
+
+```bash
+cd awsome-distributed-training/3.test_cases/11.nvidia-dali/
+
+docker build --build-arg BASE_IMAGE=${BASE_IMAGE} -t ${DOCKER_IMAGE} -f 0.Dockerfile .
+
+docker run -it --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 ${DOCKER_IMAGE} bash
+```
+
+## 4. Convert Docker image to squash file
+
+You can run the following to convert the Docker image to squash file:
+
+```bash
+enroot import -o ${APPS_PATH}/${DOCKER_IMAGE}.sqsh  dockerd://${DOCKER_IMAGE}:latest
+
+```
+
+
+#-------------------------------------------------------------------------------------------------
 
 
 
