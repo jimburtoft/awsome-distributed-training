@@ -78,7 +78,7 @@ def parse_arge():
     parser.add_argument(
         "--bf16",
         type=bool,
-        default=True if torch.cuda.get_device_capability()[0] == 8 else False,
+        default=False,
         help="Whether to use bf16.",
     )
     parser.add_argument("--fsdp", type=str, default=None, help="Whether to use fsdp.")
@@ -156,41 +156,15 @@ def training_function(args):
     eval_dataset = dataset["validation"]
 
     train_dataloader,eval_dataloader = create_dataloaders(train_dataset,eval_dataset,args.rank,args.world_size,args.seed,args.per_device_train_batch_size,args.per_device_train_batch_size)
-    train_dataloader = pl.MpDeviceLoader(train_dataloader, device)
-    eval_dataloader = pl.MpDeviceLoader(eval_dataloader, device)
+    #train_dataloader = pl.MpDeviceLoader(train_dataloader, device)
+    #eval_dataloader = pl.MpDeviceLoader(eval_dataloader, device)
 
-    """
-    auto_wrap_policy = functools.partial(
-        transformer_auto_wrap_policy,
-        transformer_layer_cls={
-            FalconDecoderLayer
-        },
-    )
-    """
     device = xm.xla_device()
-    torch.cuda.set_device(args.local_rank)
     
     dtype = torch.bfloat16
 
     # mixed_precision_policy = MixedPrecision(param_dtype=dtype, reduce_dtype=dtype, buffer_dtype=dtype)
 
-    """
-    model = FSDP(
-        model,
-        auto_wrap_policy=auto_wrap_policy,
-        mixed_precision=mixed_precision_policy,
-        sharding_strategy=ShardingStrategy.FULL_SHARD,
-        backward_prefetch=BackwardPrefetch.BACKWARD_PRE,
-        forward_prefetch=args.forward_prefetch,
-        limit_all_gathers=args.limit_all_gathers,
-        device_id=torch.cuda.current_device(),
-    )
-
-    non_reentrant_wrapper = functools.partial(checkpoint_wrapper, offload_to_cpu=True,
-                                                  checkpoint_impl=CheckpointImpl.NO_REENTRANT)
-    check_fn_gpt = lambda submodule: isinstance(submodule, FalconDecoderLayer)
-    apply_activation_checkpointing(model, checkpoint_wrapper_fn=non_reentrant_wrapper, check_fn=check_fn_gpt)
-    """
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
     no_decay = ["bias", "LayerNorm.weight", "layer_norm.weight"]
@@ -224,13 +198,13 @@ def training_function(args):
     )
 
     start = time.time()
-    device = torch.device(f"cuda:{args.local_rank}")
+    #device = torch.device(f"cuda:{args.local_rank}")
 
     for epoch in range(args.num_train_epochs):
 
         model.train()
         total_steps=0
-        fsdp_loss = torch.zeros(2).to(args.local_rank)
+        fsdp_loss = torch.zeros(2).to(device)
 
         for _, batch in enumerate(tqdm(train_dataloader,disable=not (args.rank==0))):
 
@@ -261,7 +235,7 @@ def training_function(args):
 
         model.eval()
         eval_loss = 0
-        fsdp_eval_loss = torch.zeros(2).to(args.local_rank)
+        fsdp_eval_loss = torch.zeros(2).to(device)
         for steps, batch in enumerate(tqdm(eval_dataloader,disable=not (args.rank==0))):
             batch = {k: v.to(device) for k, v in batch.items()}
             with torch.no_grad():
