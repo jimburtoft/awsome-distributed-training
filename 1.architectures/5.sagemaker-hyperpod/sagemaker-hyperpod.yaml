@@ -442,6 +442,93 @@ Resources:
           - { RandomGUID: !Select [0, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId ]]]] }
 
 
+  UploadLifecycleScripts:
+    Type: 'Custom::LifecycleScripts'
+    Properties:
+      ServiceToken: !GetAtt UploadLifecycleScriptsLambda.Arn
+      BucketName: !Ref LCScriptsBucket
+      S3Key: "src/"
+      GithubRepo: "https://github.com/aws-samples/awsome-distributed-training"
+
+  UploadLifecycleScriptsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: python3.10
+      Role: !GetAtt UploadLifecycleScriptsLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import os
+          import json
+          import subprocess
+
+          def clone_github_repo(github_repo, local_repo_dir):
+              """
+              Clones the GitHub repository to the local directory.
+              """
+              if not os.path.exists(local_repo_dir):
+                  os.makedirs(local_repo_dir)
+              subprocess.run(["git", "clone", github_repo, local_repo_dir], check=True)
+
+          def upload_to_s3(s3_bucket, s3_key, local_repo_dir):
+              """
+              Uploads the contents of the cloned repository to an S3 bucket.
+              """
+              s3 = boto3.client("s3")
+              os.chdir(f"{local_repo_dir}/1.architectures/5.sagemaker-hyperpod/LifecycleScripts/base-config")
+              for root, dirs, files in os.walk("."):
+                  for file in files:
+                      local_file_path = os.path.join(root, file)
+                      destination = os.path.normpath(os.path.join(s3_key, local_file_path))
+                      try:
+                          s3.upload_file(local_file_path, s3_bucket, destination)
+                          print(f"Uploaded {local_file_path} to s3://{s3_bucket}/{destination}")
+                      except ClientError as e:
+                          print(f"Error uploading {local_file_path}: {e}")
+
+          def handler(event, context):
+              print("Received event: " + json.dumps(event, indent=2))
+              if event['RequestType'] == 'Create':
+                  s3_bucket = event['ResourceProperties']['BucketName']
+                  s3_key = event['ResourceProperties']['S3Key']
+                  github_repo = event['ResourceProperties']['GithubRepo']
+                  print(f"Uploading Lifecycle scripts to s3://{s3_bucket}/{s3_key}")
+                  clone_github_repo(github_repo, "tmp/")
+                  upload_to_s3(s3_bucket, s3_key, 'tmp/')
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, 'CustomResourcePhysicalID')
+              elif event['RequestType'] == 'Update':
+                  print('Updating bucket')
+
+
+
+  UploadLifecycleScriptsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                    [
+                    "s3:PutObject"
+                ]
+                Resource: "*"
+
 #############
 ## Outputs ##
 #############
