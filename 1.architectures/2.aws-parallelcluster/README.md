@@ -4,6 +4,8 @@
 
 Clusters in AWS ParallelCluster share similar components: a head-node, compute nodes (typically P or Trn EC2 family of instances) and one or multiple shared filesystems (FSx for Lustre). You will find below a section on the architectures themselves and how to deploy them. After this section, you will be brief on key elements of these templates (or things you wanna know to avoid potential mistakes).
 
+Description below is based on `aws-parallelcluster==3.11.0`.
+
 ## 2. Pre-requisites
 
 Before deploying a cluster, let's ensure you have installed the AWS ParallelCluster (PC) CLI, and that you have generated an EC2 key pair for the head node later on. If you have both PC installed and the key pair generated then skip this section and go [deploy-a-cluster section](#3-deploy-clusters).
@@ -28,7 +30,7 @@ pip3 install awscli # install the AWS CLI
 pip3 install aws-parallelcluster # then AWS ParallelCluster
 ```
 
-> **Note**: you can use virtual environments to test different versions of AWS ParallelCluster by setting the version during the installation. For example to use 3.9.1, change the command `pip3 install aws-parallelcluster==3.9.1`.
+> **Note**: you can use virtual environments to test different versions of AWS ParallelCluster by setting the version during the installation. For example to use 3.11.0, change the command `pip3 install aws-parallelcluster==3.11.0`.
 
 ### 2.2. Create your EC2 Keypair (if needed)
 
@@ -45,7 +47,7 @@ AWS_TARGET_REGION=us-east-1
 KEYPAIR_NAME=pcluster-workshop-key
 
 # Create the key pair using the AWS CLI and retrieve the private part (.pem file)
-aws ec2 create-key-pair --key-name pcluster-workshop-key \
+aws ec2 create-key-pair --key-name ${KEYPAIR_NAME} \
                         --query KeyMaterial \
                         --region $AWS_TARGET_REGION \
                         --output text > $KEYPAIR_NAME.pem
