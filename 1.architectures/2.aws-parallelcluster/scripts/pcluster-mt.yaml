@@ -15,8 +15,8 @@ HeadNode:
   Networking:
     SubnetId: ${PUBLIC_SUBNET_ID}
     AdditionalSecurityGroups:
-      - sg-0271cc53ac6fad8fd # ldap
-      - sg-0c5f2378c724bd1ef # slurm
+      - ${LDAP_SG} # ldap
+      - ${SLURMDB_SG} # slurmdb
   LocalStorage:
     RootVolume:
       Size: 500
@@ -36,6 +36,10 @@ HeadNode:
             - ${LDAP_SECRET}
             - ${LDAP_IP}
             - ${REGION}
+        - Script: 'https://raw.githubusercontent.com/aws-samples/awsome-distributed-training/refs/heads/pcluster_mt/1.architectures/2.aws-parallelcluster/scripts/multitenant.sh'
+        - Script: 'https://raw.githubusercontent.com/aws-samples/awsome-distributed-training/refs/heads/pcluster_mt/1.architectures/2.aws-parallelcluster/scripts/admin_users.sh'
+          Args:
+            - ${ADMIN_USERS}
 Scheduling:
   Scheduler: slurm
   SlurmSettings:
@@ -60,8 +64,8 @@ Scheduling:
       CapacityType: ONDEMAND
       Networking:
         AdditionalSecurityGroups:
-          - sg-0271cc53ac6fad8fd # ldap
-          - sg-0c5f2378c724bd1ef # slurmdb
+          - ${LDAP_SG} # ldap
+          - ${SLURMDB_SG} # slurmdb
         SubnetIds:
           - ${PRIVATE_SUBNET_ID}
         PlacementGroup:
@@ -113,4 +117,3 @@ Monitoring:
   Dashboards:
     CloudWatch:
       Enabled: true # provide basic dashboards
-      
