@@ -1,0 +1,116 @@
+#https://docs.aws.amazon.com/parallelcluster/latest/ug/Scheduling-v3.html
+Region: $REGION
+Tags:
+  - Key: DELETION
+    Value: Guillaume-DO-NOT-DELETE
+Image:
+  Os: ${OS_PC}
+  # CustomAmi: ${AMI_ID}
+Imds:
+  ImdsSupport: v2.0
+HeadNode:
+  Ssh:
+    KeyName: ${SSHKP}
+  InstanceType: m5.8xlarge
+  Networking:
+    SubnetId: ${PUBLIC_SUBNET_ID}
+    AdditionalSecurityGroups:
+      - sg-0271cc53ac6fad8fd # ldap
+      - sg-0c5f2378c724bd1ef # slurm
+  LocalStorage:
+    RootVolume:
+      Size: 500
+      DeleteOnTermination: true # that's your root and /home volume for users
+  Iam:
+    AdditionalIamPolicies: # grant ECR, SSM and S3 read access
+      - Policy: arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      - Policy: arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      - Policy: arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+  CustomActions:
+    OnNodeConfigured:
+      Sequence:
+        - Script: 'https://raw.githubusercontent.com/aws-samples/aws-parallelcluster-post-install-scripts/main/docker/postinstall.sh'
+        - Script: 'https://raw.githubusercontent.com/aws-samples/aws-parallelcluster-post-install-scripts/main/pyxis/postinstall.sh'
+        - Script: 'https://raw.githubusercontent.com/aws-samples/aws-parallelcluster-post-install-scripts/main/ldap_client/postinstall.sh'
+          Args:
+            - ${LDAP_SECRET}
+            - ${LDAP_IP}
+            - ${REGION}
+Scheduling:
+  Scheduler: slurm
+  SlurmSettings:
+    Database:
+      Uri: ${SLURMDB}
+      UserName: slurm
+      PasswordSecretArn: ${SLURMDBSECRET}
+    ScaledownIdletime: 60
+    # CustomSlurmSettings:
+      # Simple accounting to text file /home/slurm/slurm-job-completions.txt.
+      #
+      # Must be disabled should you prefer to setup Slurm accounting to database
+      # (https://docs.aws.amazon.com/parallelcluster/latest/ug/slurm-accounting-v3.html).
+      #
+      # NOTE: JobCompType entry will be duplicated, hence will cause a harmless
+      # warning message in systemctl status --no-pager slurmctld.
+      # - JobCompType: jobcomp/filetxt
+      # - JobCompLoc: /home/slurm/slurm-job-completions.txt
+      # - JobAcctGatherType: jobacct_gather/linux
+  SlurmQueues:
+    - Name: compute-gpu
+      CapacityType: ONDEMAND
+      Networking:
+        AdditionalSecurityGroups:
+          - sg-0271cc53ac6fad8fd # ldap
+          - sg-0c5f2378c724bd1ef # slurmdb
+        SubnetIds:
+          - ${PRIVATE_SUBNET_ID}
+        PlacementGroup:
+          Enabled: true  # set this to false if using a targeted ODCR
+      ComputeSettings:
+        LocalStorage:
+          EphemeralVolume:
+            MountDir: /scratch # each instance has a local scratch on NVMe
+          RootVolume:
+            Size: 200
+      # The capacity reservation section is recommended if you use instances
+      # with a targeted ODCRs. You can also use a capacity resource group and
+      # CapacityReservationResourceGroupArn if you want to regroup
+      # multiple reservations
+      # CapacityReservationTarget:
+      #   CapacityReservationId: ${CAPACITY_RESERVATION_ID}
+      JobExclusiveAllocation: true   # GenAI training likes to gobble all GPUs in an instance
+      ComputeResources:
+        - Name: distributed-ml
+          InstanceType: g5.8xlarge
+          MinCount: 0 # if min = max then capacity is maintained and will
+          MaxCount: 16 # not scale down
+          Efa:
+            Enabled: true
+      CustomActions:
+        OnNodeConfigured:
+          Sequence:
+            - Script: 'https://raw.githubusercontent.com/aws-samples/aws-parallelcluster-post-install-scripts/main/docker/postinstall.sh'
+            - Script: 'https://raw.githubusercontent.com/aws-samples/aws-parallelcluster-post-install-scripts/main/pyxis/postinstall.sh'
+            - Script: 'https://raw.githubusercontent.com/aws-samples/awsome-distributed-training/refs/heads/pcluster_mt/1.architectures/2.aws-parallelcluster/scripts/unkillablestep.sh'
+            - Script: 'https://raw.githubusercontent.com/aws-samples/aws-parallelcluster-post-install-scripts/main/ldap_client/postinstall.sh'
+              Args:
+                - ${LDAP_SECRET}
+                - ${LDAP_IP}
+                - ${REGION}
+SharedStorage:
+  - MountDir: /fsx
+    Name: fsx
+    StorageType: FsxLustre
+    FsxLustreSettings:
+      StorageCapacity: 4800 # size it to your storage and throughput needs
+      PerUnitStorageThroughput: 250 # this can be increased to 500 and 100
+      DeploymentType: PERSISTENT_2
+Monitoring:
+  DetailedMonitoring: true
+  Logs:
+    CloudWatch:
+      Enabled: true # good for debug
+  Dashboards:
+    CloudWatch:
+      Enabled: true # provide basic dashboards
+      
