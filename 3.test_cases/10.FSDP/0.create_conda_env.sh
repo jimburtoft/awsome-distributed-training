@@ -24,5 +24,8 @@ else
     conda install -y aws-ofi-nccl=1.9.1 -c https://aws-ml-conda.s3.us-west-2.amazonaws.com -c conda-forge
 fi
 
+# Install SMDDP from local wheel file
+pip install -I ./smdistributed_dataparallel-x.y.z-linux_x86_64.whl
+
 # Create checkpoint dir
 mkdir checkpoints

@@ -11,6 +11,11 @@ import numpy as np
 import torch
 from torch import optim
 import torch.distributed as dist
+
+use_smddp = True
+if use_smddp:
+    import smdistributed.dataparallel.torch.torch_smddp
+
 import torch.utils.data
 
 import transformers
@@ -140,7 +145,12 @@ def train(
             
 
 def main(args):
-    dist.init_process_group()
+    
+    if use_smddp:
+        dist.init_process_group(backend="smddp")
+    else:
+        dist.init_process_group()
+
     global_rank = dist.get_rank()
     device = global_rank % torch.cuda.device_count()
     world_size = dist.get_world_size()
