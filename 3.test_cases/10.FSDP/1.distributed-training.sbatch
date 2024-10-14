@@ -26,6 +26,7 @@ GPUS_PER_NODE=8 # 4 for G5.12x, 8 for P4/P5
 export FI_EFA_USE_DEVICE_RDMA=1 # use for p4d
 export FI_EFA_FORK_SAFE=1
 export FI_LOG_LEVEL=1
+export FI_LOG_SUBSYS="^ep_ctrl" # to suppress a lot of warning messages from ep_ctrl
 export FI_PROVIDER=efa
 # export FI_EFA_USE_HUGE_PAGE=0    # Set to 0 when you see os.fork() causes OSError: Cannot allocate memory.  Disabling huge page causes minor performance hit.
 export NCCL_DEBUG=INFO
