@@ -2,6 +2,8 @@
 
 This example demonstrates how to perform supervised fine tuning for Meta Llama 3.1 using Parameter-Efficient Fine Tuning (PEFT) on AWS Trainium with EKS. It uses [Hugging Face Optimum Neuron](https://huggingface.co/docs/optimum-neuron) to apply Low-Rank Adaptation (LoRA) for distributed training on Trainium.
 
+**Supported instances:** trn1.32xlarge, trn1n.32xlarge, trn2.48xlarge. Set the `INSTANCE_TYPE` variable in `generate-jobspec.sh` to match your cluster's instance type. Parallelism settings (tensor parallel degree, NeuronCore count) are derived automatically.
+
 The training script is adapted from the [official upstream example](https://github.com/huggingface/optimum-neuron/blob/main/examples/training/llama/finetune_llama.py) and uses:
 
 - **`NeuronModelForCausalLM`** for tensor-parallel model loading
@@ -33,7 +35,7 @@ This solution uses:
 
 ### 0.1. EKS Cluster
 
-Before running this training, you'll need an Amazon EKS or SageMaker HyperPod EKS cluster with at least 1 trn1.32xlarge or trn1n.32xlarge node. Instructions can be found in [1.architectures](../../1.architectures), the [aws-do-eks](https://bit.ly/do-eks) project, or the [eks-blueprints](https://github.com/aws-ia/terraform-aws-eks-blueprints) project.
+Before running this training, you'll need an Amazon EKS or SageMaker HyperPod EKS cluster with at least 1 Trainium node (trn1.32xlarge, trn1n.32xlarge, or trn2.48xlarge). Instructions can be found in [1.architectures](../../1.architectures), the [aws-do-eks](https://bit.ly/do-eks) project, or the [eks-blueprints](https://github.com/aws-ia/terraform-aws-eks-blueprints) project.
 
 ### 0.2. Setup Persistent Volume Claim (PVC) for FSx
 
@@ -97,15 +99,22 @@ docker image push ${REGISTRY}${IMAGE}${TAG}
 
 ## 2. Generate Job Spec Files
 
-Edit the `generate-jobspec.sh` script with your environment settings. Key configuration:
+Edit the `generate-jobspec.sh` script with your environment settings. Set `INSTANCE_TYPE` to match your cluster's Trainium instance type. Parallelism settings are derived automatically:
+
+| Instance Type | NeuronCores | TP Degree | DP Workers | EFA Interfaces |
+|---------------|-------------|-----------|------------|----------------|
+| ml.trn1.32xlarge / ml.trn1n.32xlarge | 32 | 8 | 4 | 8 |
+| ml.trn2.48xlarge | 64 | 4 | 16 | 16 |
+
+Key configuration:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MODEL_ID` | Hugging Face model ID | `meta-llama/Llama-3.1-8B-Instruct` |
 | `MODEL_OUTPUT_PATH` | FSx path for model storage | `/fsx/peft_ft/model_artifacts/llama3-8B` |
 | `HF_TOKEN` | Your Hugging Face token | (must be set) |
+| `INSTANCE_TYPE` | Trainium instance type | `ml.trn1.32xlarge` |
 | `MAX_SEQ_LENGTH` | Max sequence length (multiple of 2048) | `2048` |
-| `TP_SIZE` | Tensor parallelism degree | `8` |
 | `MAX_TRAINING_STEPS` | Max training steps (-1 for full epoch) | `-1` |
 | `CHECKPOINT_DIR` | FSx path for checkpoints | `/fsx/peft_ft/model_checkpoints` |
 
@@ -143,9 +152,9 @@ This pre-compiles the model using `neuron_parallel_compile`, which:
 kubectl apply -f ./launch_peft_train.yaml
 ```
 
-Training uses:
-- **Tensor parallelism degree 8** across all 32 NeuronCores on a trn1.32xlarge
-- **Data parallelism degree 4** (32 cores / 8 TP = 4 DP workers)
+Training uses instance-appropriate parallelism (configured automatically by `generate-jobspec.sh`):
+- **Tensor parallelism degree 8** on trn1 (32 NeuronCores), **degree 4** on trn2 (64 NeuronCores)
+- **Data parallelism** (NeuronCores / TP degree)
 - **BFloat16** precision
 - **LoRA** targeting all linear projections (q, k, v, o, gate, up, down)
 - **Sequence packing** for efficient batching

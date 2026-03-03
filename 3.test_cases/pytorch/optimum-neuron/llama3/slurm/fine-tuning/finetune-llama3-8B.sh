@@ -1,10 +1,37 @@
 #!/bin/bash
 
 ###########################
+## Auto-detect Instance  ##
+###########################
+
+# Detect NeuronCore count and set parallelism accordingly.
+# Based on upstream: https://github.com/huggingface/optimum-neuron/blob/main/examples/training/llama/finetune_llama.sh
+NEURON_CORES=$(neuron-ls | awk '/^\| [0-9]+/ {total += $4} END {print total}')
+
+if [ "$NEURON_CORES" -eq 32 ]; then
+    # trn1.32xlarge / trn1n.32xlarge: 32 NeuronCores, TP=8
+    PROCESSES_PER_NODE=32
+    TP_DEGREE=8
+elif [ "$NEURON_CORES" -eq 64 ]; then
+    # trn2.48xlarge: 64 NeuronCores (LNC=2), TP=4
+    PROCESSES_PER_NODE=64
+    TP_DEGREE=4
+elif [ "$NEURON_CORES" -eq 4 ]; then
+    # trn2.3xlarge: 4 NeuronCores (LNC=2), TP=4
+    PROCESSES_PER_NODE=4
+    TP_DEGREE=4
+else
+    echo "ERROR: Unsupported NeuronCore count: $NEURON_CORES"
+    echo "Supported instances: trn1.32xlarge (32), trn2.48xlarge (64), trn2.3xlarge (4)"
+    exit 1
+fi
+
+echo "Detected $NEURON_CORES NeuronCores: PROCESSES_PER_NODE=$PROCESSES_PER_NODE, TP_DEGREE=$TP_DEGREE"
+
+###########################
 ###### User Variables #####
 ###########################
 
-GPUS_PER_NODE=32
 if [ $NEURON_EXTRACT_GRAPHS_ONLY -gt 0 ]; then
     MAX_STEPS=10
     MAYBE_COMPILE="neuron_parallel_compile"
@@ -33,7 +60,7 @@ export FI_PROVIDER="efa"
 ###########################
 
 declare -a TORCHRUN_ARGS=(
-    --nproc_per_node=$GPUS_PER_NODE
+    --nproc_per_node=$PROCESSES_PER_NODE
     --nnodes=$SLURM_JOB_NUM_NODES
 )
 
@@ -61,7 +88,7 @@ declare -a TRAINING_ARGS=(
     --learning_rate 2e-05 \
     --weight_decay 0.01 \
     --warmup_steps 100 \
-    --tensor_parallel_size 8 \
+    --tensor_parallel_size $TP_DEGREE \
     --logging_steps 1 \
     --save_steps 400 \
     --output_dir $OUTPUT_DIR \

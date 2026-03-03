@@ -104,9 +104,9 @@ spec:
                   vpc.amazonaws.com/efa: ${EFA_PER_NODE}
               env:
               - name: GPUS_PER_NODE
-                value: "32"
+                value: "${NEURON_CORES}"
               - name: NEURON_RT_NUM_CORES
-                value: "32"
+                value: "${NEURON_CORES}"
               - name: NEURON_CC_FLAGS
                 value: "--model-type transformer --distribution-strategy=llm-training --enable-saturate-infinity --cache_dir=${NEURON_CACHE_DIR}"
               - name: OMP_NUM_THREADS
@@ -121,7 +121,7 @@ spec:
                 value: "70"
               command: 
                 - torchrun
-                - --nproc_per_node=32
+                - --nproc_per_node=${NEURON_CORES}
                 - --nnodes=1
                 - train.py
                 - --model_id=${MODEL_OUTPUT_PATH}
