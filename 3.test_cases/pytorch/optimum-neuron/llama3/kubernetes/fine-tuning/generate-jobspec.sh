@@ -18,23 +18,21 @@ export NEURON_PER_NODE=16
 export FSX_CLAIM=fsx-claim
 
 # Model and Dataset Configuration
-export MODEL_ID=NousResearch/Meta-Llama-3.1-8B
-export MODEL_OUTPUT_PATH=/fsx/peft_ft/model_artifacts/llama3.1-8B
-export TOKENIZER_OUTPUT_PATH=/fsx/peft_ft/tokenizer/llama3.1-8B
+export MODEL_ID=meta-llama/Llama-3.1-8B-Instruct
+export MODEL_OUTPUT_PATH=/fsx/peft_ft/model_artifacts/llama3-8B
 export DATASET_NAME=databricks/databricks-dolly-15k
+export HF_TOKEN=""  # Set your Hugging Face token here
 
 # Training Configuration
 export NEURON_CACHE_DIR=/fsx/neuron_cache
 export CHECKPOINT_DIR=/fsx/peft_ft/model_checkpoints
 export CHECKPOINT_DIR_COMPILE=/fsx/peft_ft/model_checkpoints/compile
-export FINAL_MODEL_PATH=/fsx/peft_ft/model_checkpoints/final_model_output
-export MAX_SEQ_LENGTH=1024
+export MAX_SEQ_LENGTH=2048
 export EPOCHS=1
 export LEARNING_RATE=2e-05
 export TP_SIZE=8
-export PP_SIZE=1
 export TRAIN_BATCH_SIZE=1
-export MAX_TRAINING_STEPS=1200
+export MAX_TRAINING_STEPS=-1
 
 # Generate the final yaml files from templates
 for template in tokenize_data compile_peft launch_peft_train consolidation merge_lora; do
