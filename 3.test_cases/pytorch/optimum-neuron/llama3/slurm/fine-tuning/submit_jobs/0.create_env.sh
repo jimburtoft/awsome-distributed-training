@@ -25,7 +25,7 @@ pip install -U pip
 python3 -m pip config set global.extra-index-url "https://pip.repos.neuron.amazonaws.com"
 
 # Install Neuron SDK packages first to prevent CUDA torch from being pulled
-python3 -m pip install --upgrade neuronx-cc==2.* torch-neuronx==2.8.* torchvision
-python3 -m pip install --upgrade neuronx-distributed
+python3 -m pip install --upgrade neuronx-cc==2.23.6484.0 torch-neuronx==2.8.0.2.12.22436 torchvision
+python3 -m pip install --upgrade neuronx-distributed==0.17.26814
 
 python3 -m pip install 'optimum-neuron[training]==0.4.5'

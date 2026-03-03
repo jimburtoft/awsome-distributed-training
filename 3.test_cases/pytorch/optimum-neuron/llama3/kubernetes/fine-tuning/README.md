@@ -23,6 +23,8 @@ The training script is adapted from the [official upstream example](https://gith
 | torch | 2.8.0 |
 | neuronx-distributed | 0.17.x |
 
+> **Note:** The Kubernetes Dockerfile uses the HuggingFace `pytorch-training-neuronx` DLC based on SDK 2.26.0, which is the latest available DLC at time of writing. The Slurm example uses SDK 2.28 via the Neuron DLAMI. The DLC base image will be updated when a 2.28-based version is published.
+
 ### Solution Overview
 
 This solution uses:
@@ -122,14 +124,12 @@ Key configuration:
 ./generate-jobspec.sh
 ```
 
-This creates the following YAML files from templates: `tokenize_data.yaml`, `compile_peft.yaml`, `launch_peft_train.yaml`, `consolidation.yaml`, and `merge_lora.yaml`.
+This creates the following YAML files from templates: `download_model.yaml`, `compile_peft.yaml`, `launch_peft_train.yaml`, `consolidation.yaml`, and `merge_lora.yaml`.
 
 ## 3. Download Model
 
-> **Note:** The old tokenize_data step has been replaced with a model download step. The new training script handles tokenization internally via `NeuronSFTTrainer`.
-
 ```bash
-kubectl apply -f ./tokenize_data.yaml
+kubectl apply -f ./download_model.yaml
 ```
 
 This downloads the Llama 3 model and tokenizer to your FSx volume.

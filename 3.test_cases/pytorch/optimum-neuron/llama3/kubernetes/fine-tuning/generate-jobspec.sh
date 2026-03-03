@@ -58,7 +58,7 @@ esac
 echo "Instance: $INSTANCE_TYPE -> NeuronDevices=$NEURON_PER_NODE, NeuronCores=$NEURON_CORES, TP=$TP_SIZE, EFA=$EFA_PER_NODE"
 
 # Generate the final yaml files from templates
-for template in tokenize_data compile_peft launch_peft_train consolidation merge_lora; do
+for template in download_model compile_peft launch_peft_train consolidation merge_lora; do
     cat templates/${template}.yaml-template | envsubst > ${template}.yaml
 done
 

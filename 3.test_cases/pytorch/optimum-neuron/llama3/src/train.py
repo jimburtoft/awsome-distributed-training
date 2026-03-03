@@ -119,8 +119,8 @@ class ScriptArguments:
             "help": "Path to save the final model after training (in addition to output_dir checkpoints)."
         },
     )
-    lora_r: int = field(default=64, metadata={"help": "LoRA rank."})
-    lora_alpha: int = field(default=128, metadata={"help": "LoRA alpha."})
+    lora_r: int = field(default=16, metadata={"help": "LoRA rank."})
+    lora_alpha: int = field(default=16, metadata={"help": "LoRA alpha."})
     lora_dropout: float = field(default=0.05, metadata={"help": "LoRA dropout."})
 
 
