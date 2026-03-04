@@ -119,13 +119,13 @@ spec:
               - name: FI_EFA_ENABLE_SHM_TRANSFER
                 value: "1"
               - name: NEURON_RT_NUM_CORES
-                value: "32"
+                value: "${NEURON_CORES}"
               - name: NUM_NEURONCORES
-                value: "32"
+                value: "${NEURON_CORES}"
               - name: TPU_NUM_DEVICES
-                value: "32"
+                value: "${NEURON_CORES}"
               - name: TPU_CHIPS_PER_HOST_BOUNDS
-                value: "32"
+                value: "${NEURON_CORES}"
               - name: TORCH_NCCL_DEBUG_INFO_TEMP_FILE
                 value: "/local/nccl_trace_rank_"
               - name: PYTORCH_CUDA_ALLOC_CONF
@@ -142,18 +142,18 @@ spec:
                 value: "--model-type transformer --distribution-strategy=llm-training --cache_dir=${NEURON_CACHE_DIR}"
               command: 
                 - torchrun
-                - --nproc_per_node=32
+                - --nproc_per_node=${NEURON_CORES}
                 - --nnodes=$NUM_NODES
                 - train.py
                 - --model_path=${MODEL_PATH}
                 - --data_dir=${TOKENIZED_DATA_PATH}/${DATASET_NAME}_llama3_tokenized_8k
-                - --tensor_parallel_size=32
+                - --tensor_parallel_size=${TP_SIZE}
                 - --batch_size=${BATCH_SIZE}
                 - --steps_this_run=${STEPS_THIS_RUN}
                 - --max_steps=${MAX_STEPS}
                 - --warmup_steps=100
                 - --lr=1.5e-4
-                - --grad_accum_usteps=16
+                - --grad_accum_usteps=${GRAD_ACCUM_USTEPS}
                 - --seq_len=8192
                 - --sequence_parallel_enabled
                 - --selective_checkpoint_enabled
