@@ -10,6 +10,7 @@ DCGM_EXPORTER_VERSION=4.1.1-4.0.4-ubi9
 IMAGE="$ECR_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hyperpod/dcgm_exporter:${DCGM_EXPORTER_VERSION}"
 METRICS_CSV_DIR="/etc/dcgm-exporter"
 METRICS_CSV_FILE="/etc/dcgm-exporter/dcgm-metrics.csv"
+JOB_ID_MAP_DIR="/run/slurm/dcgm_job_mapping"
 
 # Maximum number of retries
 MAX_RETRIES=5
@@ -67,8 +68,10 @@ if nvidia-smi > /dev/null 2>&1; then
         --net host \
         --cap-add SYS_ADMIN \
         -v "$METRICS_CSV_DIR:$METRICS_CSV_DIR" \
+        -v "$JOB_ID_MAP_DIR:/etc/dcgm-exporter/hpc" \
         $IMAGE \
-        -f "$METRICS_CSV_FILE"; then
+        -f "$METRICS_CSV_FILE" \
+        --hpc-job-mapping-dir "/etc/dcgm-exporter/hpc"; then
         echo "Running DCGM exporter in a Docker container on port 9400..."
     else
         echo "Failed to run DCGM Exporter Docker container"
