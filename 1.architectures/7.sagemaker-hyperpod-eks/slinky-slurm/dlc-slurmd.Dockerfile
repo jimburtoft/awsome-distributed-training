@@ -2,7 +2,13 @@
 FROM 763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.6.0-gpu-py312-cu126-ubuntu22.04-ec2 AS dlc
 
 # Second stage - Slurm compute node
-FROM ghcr.io/slinkyproject/slurmd:25.05.0-ubuntu24.04
+# NOTE: Ubuntu version mismatch (22.04 in Stage 1 vs 24.04 here) is intentional.
+# The Slinky project does not publish slurmd images for ubuntu22.04, and AWS DLC
+# does not publish GPU training images for ubuntu24.04. The copied libraries
+# (CUDA, EFA, NCCL, OpenMPI, Python) are dynamically linked against glibc, but
+# glibc is backward-compatible: binaries built against 22.04's glibc 2.35 run on
+# 24.04's glibc 2.39. The reverse direction (newer -> older) would break.
+FROM ghcr.io/slinkyproject/slurmd:25.11.1-ubuntu24.04
 
 ARG PYTHON_SHORT_VERSION=3.12
 

@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: fsx-pv-slurm
+spec:
+  capacity:
+    storage: 1200Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: fsx-sc
+  claimRef:
+    name: fsx-claim
+    namespace: slurm
+  csi:
+    driver: fsx.csi.aws.com
+    volumeHandle: ${fsx_id}
+    volumeAttributes:
+      dnsname: ${fsx_dns}
+      mountname: ${fsx_mount}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fsx-claim
+  namespace: slurm
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: fsx-sc
+  resources:
+    requests:
+      storage: 1200Gi
