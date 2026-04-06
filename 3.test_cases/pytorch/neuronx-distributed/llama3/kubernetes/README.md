@@ -1,6 +1,17 @@
 ## Train Llama 3 8B model on Kubernetes
 
-In this section, we showcase how to pre-train Llama3-8B, Llama3 8B model using Trn1.32xlarge/Trn1n.32xlarge instances using the Neuron Distributed library. To train the LLama model in this example, we will apply the following optimizations using the Neuron Distributed library:
+In this section, we showcase how to pre-train Llama3-8B using AWS Trainium instances and the Neuron Distributed library. This example supports both trn1 and trn2 instance types.
+
+**Supported instances:** Set the `INSTANCE_TYPE` variable in `generate-jobspec.sh` to match your cluster. Parallelism settings are derived automatically.
+
+| Instance Type | NeuronCores | TP Degree | DP per Node |
+|---------------|-------------|-----------|-------------|
+| ml.trn1.32xlarge / ml.trn1n.32xlarge | 32 | 32 | 1 |
+| ml.trn2.48xlarge | 64 | 32 | 2 |
+
+> **trn2 status:** The `generate-jobspec.sh` and yaml templates support trn2.48xlarge configuration, but NxD training on trn2 requires Neuron SDK collectives support that is not yet available as of SDK 2.28. The trn1 configuration is fully tested and recommended for production use.
+
+The following optimizations are applied using the Neuron Distributed library:
 
 1. [Tensor Parallelism](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/libraries/neuronx-distributed/tensor_parallelism_overview.html#tensor-parallelism-overview)
 
@@ -14,7 +25,7 @@ In this section, we showcase how to pre-train Llama3-8B, Llama3 8B model using T
 ## 0. Prerequisites
 
 ### 0.1. EKS Cluster 
-Before running this training, you'll need to create an Amazon EKS or a SageMaker HyperPod EKS cluster with atleast 1 trn1.32xlarge/ trn1n.32xlarge. Instructions can be found in [1.architectures](../../1.architectures), the [aws-do-eks](https://bit.ly/do-eks) project, or the [eks-blueprints](https://github.com/aws-ia/terraform-aws-eks-blueprints) project.
+Before running this training, you'll need to create an Amazon EKS or a SageMaker HyperPod EKS cluster with at least 1 Trainium node (trn1.32xlarge, trn1n.32xlarge, or trn2.48xlarge). Instructions can be found in [1.architectures](../../1.architectures), the [aws-do-eks](https://bit.ly/do-eks) project, or the [eks-blueprints](https://github.com/aws-ia/terraform-aws-eks-blueprints) project.
 
 ### 0.2 HF Access token 
 
@@ -74,7 +85,7 @@ docker image push ${REGISTRY}${IMAGE}${TAG}
 
 ## Generate Job Spec Files for tokenization and training
 
-The default config in the script launches a 8B Llama 3 model. When you run the generate-jobspec.sh script it creates 2 yaml files tokenize_data.yaml and llama3_train.yaml
+The default config in the script launches a 8B Llama 3 model on trn1.32xlarge. To use trn2.48xlarge, change the `INSTANCE_TYPE` variable in the script. Parallelism settings (NeuronCores, TP degree, gradient accumulation) are derived automatically from the instance type.
 
 You will have to update the HF_ACCESS_TOKEN in order for the tokenization to work.
 

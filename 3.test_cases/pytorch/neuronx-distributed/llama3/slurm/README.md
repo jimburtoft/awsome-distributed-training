@@ -4,7 +4,16 @@
  
 
 This guide assumes that you have following:
-* Slurm cluster using 16 [trn1.32xlarge](https://aws.amazon.com/ec2/instance-types/trn1/) instances with a shared parallel filesystem such as [Amazon FSx for Lustre](https://docs.aws.amazon.com/fsx/latest/LustreGuide/getting-started.html). 
+* Slurm cluster using Trainium instances ([trn1.32xlarge](https://aws.amazon.com/ec2/instance-types/trn1/) or [trn2.48xlarge](https://aws.amazon.com/ec2/instance-types/trn2/)) with a shared parallel filesystem such as [Amazon FSx for Lustre](https://docs.aws.amazon.com/fsx/latest/LustreGuide/getting-started.html).
+
+**Supported instances:**
+
+| Instance | NeuronCores | Recommended Use |
+|----------|-------------|-----------------|
+| trn1.32xlarge | 32 | 16 nodes for Llama 3 70B |
+| trn2.48xlarge | 64 (LNC=2) | 8 nodes for Llama 3 70B |
+
+> **trn2 status:** The parallelism configuration and checkpoint sharding commands for trn2.48xlarge are documented below, but NxD training on trn2 requires Neuron SDK collectives support that is not yet available as of SDK 2.28. The trn1 configuration is fully tested and recommended for production use.
 
 
 The subsequent sections presume that you are operating from the home directory of this head node as the `ubuntu` user.
@@ -44,6 +53,8 @@ python -m pip install --upgrade neuronx-cc==2.* torch-neuronx==2.9.* torchvision
 #Install the neuronx-distributed package 
 python -m pip install neuronx_distributed 
 ```
+
+> **Note:** The same virtual environment works for both trn1 and trn2. The Neuron runtime detects the hardware automatically.
 
 This example was tested with Neuron SDK 2.28.0 which includes the following software stack:
 
@@ -205,6 +216,8 @@ You can check the status of this this job using the "squeue" command.
 
 Next, we use the `convert_checkpoints.py` script to shard the checkpoints. Execute the following command to shards based on the distributed training setting we are going to use in the next step:
 
+**For trn1.32xlarge (16 nodes):**
+
 ```bash
 mkdir -p /fsx/ubuntu/llama3_70B/pretrained_weight
 sbatch --job-name=convert-checkpoint --output=logs/convert-checkpoint.out \
@@ -221,6 +234,27 @@ sbatch --job-name=convert-checkpoint --output=logs/convert-checkpoint.out \
               --config /fsx/ubuntu/Meta-Llama-3-70B/config.json \
               --convert_from_full_state"
 ```
+
+**For trn2.48xlarge (8 nodes):**
+
+```bash
+mkdir -p /fsx/ubuntu/llama3_70B/pretrained_weight
+sbatch --job-name=convert-checkpoint --output=logs/convert-checkpoint.out \
+       --wrap "\ 
+              srun python /fsx/ubuntu/llama/convert_checkpoints.py \
+              --hw_backend trn2 \
+              --tp_size 32 --pp_size 8 --n_layers 80 \
+              --save_xser 1 \
+              --kv_size_multiplier 4 \
+              --qkv_linear 1 \
+              --fuse_qkv True \
+              --input_dir /fsx/ubuntu/llama-3-70b.pt \
+              --output_dir /fsx/ubuntu/llama3_70B/pretrained_weight \
+              --config /fsx/ubuntu/Meta-Llama-3-70B/config.json \
+              --convert_from_full_state"
+```
+
+> **Note:** The `--hw_backend` flag must match your instance type (`trn1` or `trn2`). The TP and PP sizes remain the same — on trn2.48xlarge, the extra cores provide additional data parallelism (DP=4 vs DP=2 on trn1).
 
 You can track the progress with
 
@@ -247,7 +281,7 @@ ls /fsx/ubuntu/llama3_70B/pretrained_weight/model/dp_rank_*_tp_rank_*_pp_rank_*.
 256
 ```
 
-As mentioned in the introduction of this section, the sharding ought to take hardware and cluster setup into account. Specifically, in our example, we have 16 trn1.32xlarge instances deployed on the HyperPod cluster. Each trn1.32xlarge instance has 16 Trainium Neuron Devices, each with 2 NeuronCore-v2, totaling 32 NeuronCore-v2 per instance, and 512 NeuronCore-v2 in the entire cluster.
+As mentioned in the introduction of this section, the sharding ought to take hardware and cluster setup into account. Specifically, in our example, we have 16 trn1.32xlarge instances (or equivalently, 8 trn2.48xlarge instances) deployed on the HyperPod cluster. Each trn1.32xlarge instance has 16 Trainium Neuron Devices, each with 2 NeuronCore-v2, totaling 32 NeuronCore-v2 per instance, and 512 NeuronCore-v2 in the entire cluster. Each trn2.48xlarge instance has 16 Neuron Devices with 4 physical cores each (8 logical cores per device at LNC=2 default), totaling 64 NeuronCores per instance.
 We divide the Llama3-70B model’s 80 layers into different stages, each containing the first 10 layers, second 10 layers, ..., 8th 10 layers, and assign them to 8 Trn1 instances. Each stage is further split with Tensor Parallelism, dividing the stage’s parameters across 32 NeuronCore-v2. Since we will have two replicas of the sharded models, we employ data parallelism with a degree of two to speed up the training process.
 The resultant checkpoints will be used in the next continual pretraining stage.
 
@@ -339,12 +373,27 @@ The Neuron SDK will need to run a compilation process as the first step in train
 
 We can submit the training job as follows:
 
+**For trn1.32xlarge (16 nodes, 512 NeuronCores total):**
+
 ```bash
 sbatch --job-name run_llama3_70B \
        --output logs/run_llama3_70B.out \
        --exclusive --nodes 16 \
        --wrap="srun bash $(pwd)/run_llama3_70B_tp_pp.sh"
 ```
+
+**For trn2.48xlarge (8 nodes, 512 NeuronCores total):**
+
+The same total NeuronCore count (512) can be achieved with 8 trn2.48xlarge nodes (64 cores each) instead of 16 trn1.32xlarge nodes. The parallelism config (TP=32, PP=8) stays the same — the extra cores per node provide additional data parallelism.
+
+```bash
+sbatch --job-name run_llama3_70B \
+       --output logs/run_llama3_70B.out \
+       --exclusive --nodes 8 \
+       --wrap="srun bash $(pwd)/run_llama3_70B_tp_pp.sh"
+```
+
+> **Note:** The `run_llama3_70B_tp_pp.sh` script uses `NUM_NEURONCORES=32` and `NEURON_RT_NUM_CORES=32` which are correct for trn1. For trn2.48xlarge, update these values to `64` in the script, and set `nproc_per_node` accordingly. The TP and PP degrees remain unchanged.
 
 If you are on HyperPod add the `--auto-resume=1` flag as follows to indicate that the `srun` command should be automatically retried in case of hardware failure:
 ```bash
