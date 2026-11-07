@@ -204,8 +204,11 @@ def main(args):
     # Apply fully_shard to root model
     fully_shard(model, **fsdp_kwargs)
     
-    # Move model from meta device to CUDA
+    # Move model from meta device to CUDA, then initialize weights and buffers.
+    # to_empty() only allocates memory; without initialization the parameters (and the rotary
+    # inv_freq buffers) hold whatever was in device memory.
     model.to_empty(device=torch.device("cuda"))
+    model.initialize_weights()
 
     if global_rank == 0:
         logger.info("Wrapped model with FSDP2")

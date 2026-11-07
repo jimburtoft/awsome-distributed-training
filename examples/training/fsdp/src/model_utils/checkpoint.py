@@ -84,11 +84,12 @@ def load_checkpoint(model, optimizer, scheduler, checkpoint_dir, model_type, dev
     if dist.get_rank() == 0:
         logger.info("Loading checkpoint from %s ...", last_checkpoint)
     
-    # Load state dict from checkpoint
+    # Load state dict from checkpoint. dist_cp.load() fills the tensors it is given in place, so the
+    # model and optimizer entries must be the live (sharded) state dicts; empty dicts load nothing.
     state_dict = {
-        "model": {},
-        "optim": {},
-        "scheduler": {},
+        "model": get_model_state_dict(model),
+        "optim": get_optimizer_state_dict(model, optimizer),
+        "scheduler": scheduler.state_dict(),
         "total_steps": 0,
         "start_batch_index": 0,
     }
