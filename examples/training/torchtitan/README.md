@@ -12,3 +12,5 @@ torchtitan offers several advanced capabilities:
 - [Optimized Checkpointing Efficiency](https://discuss.pytorch.org/t/distributed-w-torchtitan-optimizing-checkpointing-efficiency-with-pytorch-dcp/211250) with PyTorch DCP
 - [Zero-Bubble Pipeline Parallelism](https://discuss.pytorch.org/t/distributed-w-torchtitan-training-with-zero-bubble-pipeline-parallelism/214420)
 - [Context Parallelism for training long context LLMs](https://discuss.pytorch.org/t/distributed-w-torchtitan-breaking-barriers-training-long-context-llms-with-1m-sequence-length-in-pytorch-using-context-parallel/215082/1) (with 1M Sequence Length)
+
+For AWS Trainium, see [AWS Trainium](slurm/README.md#aws-trainium).

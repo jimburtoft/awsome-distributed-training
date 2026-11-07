@@ -108,3 +108,39 @@ Running with this optimized config on 4 x p5.48xlarge (32 H100s) improved throug
 0: 2025-03-04 00:31:19,918 - root - INFO - [36mstep: 1990  [32mloss:  3.4255  [33mmemory: 63.48GiB(80.25%)  [34mtps: 7,865  [35mmfu: 46.06%[39m
 0: 2025-03-04 00:31:19,918 - root - INFO - [36mstep: 1990  [32mloss:  3.4255  [33mmemory: 63.48GiB(80.25%)  [34mtps: 7,865  [35mmfu: 46.06%[39m
 ```
+
+## AWS Trainium
+
+On AWS Trainium (trn2), use the torchtitan-neuron package that ships in the public Neuron SDK 2.33 PyTorch Native image. It is TorchTitan v0.2.2 with Neuron recipes for Llama 3, Qwen3, GPT-OSS and DeepSeek-V3. Its recipes are Python configuration registries (`--module`, `--config`), so the TOML files above do not apply. The image has no FP8 path for these recipes, so it has no equivalent of `llama3_8b_fp8_compile.toml`.
+
+The [neuron](neuron) directory contains:
+
+| File | Purpose |
+|---|---|
+| [`neuron/Dockerfile`](neuron/Dockerfile) | The Neuron SDK 2.33 image plus small single-instance smoke configs |
+| [`neuron/0.create-enroot-image.sh`](neuron/0.create-enroot-image.sh) | Builds the image and imports it for Pyxis |
+| [`neuron/1.download_tokenizer.sh`](neuron/1.download_tokenizer.sh) | Downloads the Llama 3.1 tokenizer (needs `HF_TOKEN` with access to the gated model) |
+| [`neuron/2.llama_3_8b_torchtitan_neuron.sh`](neuron/2.llama_3_8b_torchtitan_neuron.sh) | Slurm job for the Llama 3 8B recipes |
+| [`neuron/neuron_smoke_configs.py`](neuron/neuron_smoke_configs.py) | The Neuron Llama 3 recipe settings on the small debug model |
+
+```bash
+cd neuron
+./0.create-enroot-image.sh
+HF_TOKEN=<token> ./1.download_tokenizer.sh
+
+# Llama 3 8B on one trn2.48xlarge: TP=4 x FSDP=16, torch.compile
+sbatch --nodes 1 2.llama_3_8b_torchtitan_neuron.sh
+
+# Eager instead of torch.compile
+CONFIG=llama3_8b_sac_eager sbatch --nodes 1 2.llama_3_8b_torchtitan_neuron.sh
+
+# Four nodes with HSDP (FSDP within a node, 4 replicas across nodes)
+CONFIG=llama3_8b_fullac_compile DP_REPLICATE=4 sbatch --nodes 4 2.llama_3_8b_torchtitan_neuron.sh
+```
+
+Check the Neuron path on a single `trn2.3xlarge` first:
+
+```bash
+NPROC_PER_NODE=4 MODULE=neuron_smoke_configs CONFIG=llama3_debug_neuron_sac_compile TP=1 \
+  sbatch --nodes 1 2.llama_3_8b_torchtitan_neuron.sh --training.steps 10
+```
