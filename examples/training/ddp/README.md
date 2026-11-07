@@ -8,6 +8,7 @@ This example showcases [PyTorch DDP](https://pytorch.org/tutorials/beginner/ddp_
 
 - **CPU Training**: Uses the GLOO backend for distributed training on CPU nodes
 - **GPU Training**: Automatically switches to NCCL backend when GPUs are available, providing optimized multi-GPU training
+- **AWS Trainium Training**: With `DDP_DEVICE=neuron`, uses the Neuron backend and NeuronCores through PyTorch Native (TorchNeuron). See [AWS Trainium](#aws-trainium)
 
 ## Training
 
@@ -73,6 +74,43 @@ The MLFlow UI provides:
 - Parameter tracking
 - Model artifact management
 - Run history
+
+## AWS Trainium
+
+The same `ddp.py` runs on AWS Trainium (trn2) with [PyTorch Native](https://awsdocs-neuron.readthedocs-hosted.com/) (Neuron SDK 2.33, torch 2.14 + torch-neuronx). Set `DDP_DEVICE=neuron` to select the `neuron` process-group backend and one NeuronCore per rank. GPU and CPU runs are unchanged.
+
+The [neuron](neuron) directory contains:
+
+| File | Purpose |
+|---|---|
+| [`neuron/Dockerfile`](neuron/Dockerfile) | Image built on the public Neuron SDK 2.33 PyTorch Native image |
+| [`neuron/slurm/0.create-enroot-image.sh`](neuron/slurm/0.create-enroot-image.sh) | Builds the image and imports it for Pyxis |
+| [`neuron/slurm/1.container-train.sbatch`](neuron/slurm/1.container-train.sbatch) | Multi-node Slurm job (SageMaker HyperPod or ParallelCluster) |
+| [`neuron/kubernetes/ddp-neuron.yaml-template`](neuron/kubernetes/ddp-neuron.yaml-template) | PyTorchJob that requests Neuron devices and EFA |
+
+Run one process per logical NeuronCore: 4 on `trn2.3xlarge` and 64 on `trn2.48xlarge` (at the default logical NeuronCore size of 2).
+
+```bash
+# Slurm (from examples/training/ddp/neuron/slurm)
+./0.create-enroot-image.sh
+NPROC_PER_NODE=64 sbatch --nodes 2 1.container-train.sbatch
+```
+
+```bash
+# Kubernetes (from examples/training/ddp/neuron/kubernetes)
+export IMAGE_URI=<your ECR repository>/ddp-neuron:latest   # built from neuron/Dockerfile
+export INSTANCE_TYPE=ml.trn2.48xlarge NUM_NODES=2
+export NEURON_DEVICES_PER_NODE=16 NEURON_CORES_PER_NODE=64 EFA_PER_NODE=16
+envsubst < ddp-neuron.yaml-template | kubectl apply -f -
+```
+
+Single node, without a scheduler:
+
+```bash
+docker build -t ddp-neuron -f neuron/Dockerfile .
+docker run --rm --privileged --shm-size=8g --entrypoint torchrun ddp-neuron \
+  --nproc_per_node=4 /opt/ddp/ddp.py --total_epochs=3 --save_every=1 --batch_size=64
+```
 
 ## Deployment
 
