@@ -1,0 +1,195 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# Multi-GPU GRPO Wordle Training on SageMaker HyperPod (EKS) - vLLM server mode
+#
+# Splits inference and training across GPUs on a single ml.g6e.12xlarge node:
+#   GPU 0:   Dedicated vLLM server for fast rollout generation
+#   GPU 1-3: FSDP-sharded GRPO training (Accelerate launch)
+# Usage:
+#   envsubst < train-grpo-wordle-multigpu.yaml | kubectl apply -f -
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: grpo-wordle-neuron
+  namespace: ${NAMESPACE}
+  labels:
+    app: grpo-wordle-neuron
+  annotations:
+    sagemaker.amazonaws.com/enable-job-auto-resume: "true"
+    sagemaker.amazonaws.com/job-max-retry-count: "3"
+spec:
+  restartPolicy: OnFailure
+  tolerations:
+    - key: sagemaker.amazonaws.com/node-health-status
+      operator: Exists
+      effect: NoSchedule
+  nodeSelector:
+    node.kubernetes.io/instance-type: $INSTANCE_TYPE
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: sagemaker.amazonaws.com/node-health-status
+                operator: In
+                values:
+                  - Schedulable
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: sagemaker.amazonaws.com/deep-health-check-status
+                operator: In
+                values:
+                  - Passed
+  initContainers:
+    # Wait for the OpenEnv Wordle environment to be ready
+    - name: wait-for-env
+      image: curlimages/curl:8.12.1
+      command: ["sh", "-c"]
+      args:
+        - |
+          echo "Waiting for OpenEnv Wordle environment..."
+          until curl -sf http://openenv-wordle:7860/health; do
+            echo "  env not ready, retrying in 5s..."
+            sleep 5
+          done
+          echo "OpenEnv Wordle environment is ready!"
+  containers:
+    # trn2.3xlarge has one Neuron device (4 logical NeuronCores). Both containers share it:
+    # vLLM on AWS Neuron on core 0, the trainer on cores 2-3 (the Neuron collectives need 1, 2, 4, 8, ... ranks).
+    # Container 1: vLLM on AWS Neuron with the in-place weight-reload worker extension
+    - name: vllm-server
+      image: ${VLLM_NEURON_IMAGE}
+      imagePullPolicy: IfNotPresent
+      resources:
+        requests:
+          aws.amazon.com/neuron: 1
+          memory: "60Gi"
+        limits:
+          aws.amazon.com/neuron: 1
+          memory: "60Gi"
+      env:
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: token
+      - name: HF_HOME
+        value: "/fsx/hf_cache"
+      - name: NEURON_VISIBLE_DEVICES
+        value: "0"
+      - name: NEURON_SKIP_EFA_AFFINITY
+        value: "1"
+      - name: VLLM_SERVER_DEV_MODE          # exposes /collective_rpc, used for the weight reload
+        value: "1"
+      - name: PYTHONPATH
+        value: "/opt/wordle-neuron"
+      command:
+        - vllm
+        - serve
+        - $MODEL_NAME
+        - --host
+        - "0.0.0.0"
+        - --port
+        - "8000"
+        - --tensor-parallel-size
+        - "1"
+        - --max-model-len
+        - "2048"
+        - --max-num-batched-tokens
+        - "512"
+        - --max-num-seqs
+        - "8"
+        - --worker-extension-cls
+        - neuron_weight_reload.NeuronWeightReload
+      volumeMounts:
+        - name: shmem
+          mountPath: /dev/shm
+        - name: fsx-storage
+          mountPath: /fsx
+        - name: neuron-ext
+          mountPath: /opt/wordle-neuron
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8000
+        initialDelaySeconds: 300
+        periodSeconds: 15
+
+    # Container 2: GRPO training with FSDP2 on NeuronCores 2-3
+    - name: trainer
+      image: ${REGISTRY}${IMAGE}:${TAG}
+      imagePullPolicy: Always
+      resources:
+        requests:
+          memory: "60Gi"
+        limits:
+          memory: "60Gi"
+      env:
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: token
+      - name: HF_HOME
+        value: "/fsx/hf_cache"
+      - name: NEURON_RT_VISIBLE_CORES
+        value: "2-3"
+      - name: NEURON_WEIGHT_SYNC_DIR        # shared with the vLLM container through /fsx
+        value: "/fsx/weight_sync/grpo-wordle-neuron"
+      - name: TRL_EXPERIMENTAL_SILENCE
+        value: "1"
+      # One environment session per rank (each environment server accepts one session).
+      - name: WORDLE_ENV_URLS
+        value: "${WORDLE_ENV_URLS}"
+      command:
+        - "/bin/bash"
+        - "-c"
+        - |
+          set -euo pipefail
+          echo "Waiting for vLLM server..."
+          until curl -sf http://localhost:8000/health; do
+            sleep 10
+          done
+          echo "vLLM server is ready, starting training..."
+
+          accelerate launch --config_file /opt/wordle-grpo/neuron/fsdp2.yaml \
+            /opt/wordle-grpo/neuron/train_wordle_grpo_neuron.py \
+              --model-id $MODEL_NAME \
+              --tokenizer-id $MODEL_NAME \
+              --system-prompt-path /opt/wordle-grpo/src/wordle_prompt.txt \
+              --vllm-mode server \
+              --vllm-server-url http://localhost:8000 \
+              --output-dir /fsx/checkpoints/wordle-grpo-neuron \
+              --num-generations $NUM_GENERATIONS \
+              --gradient-accumulation-steps $GRADIENT_ACCUMULATION_STEPS \
+              --learning-rate $LEARNING_RATE \
+              --per-device-batch-size 1 \
+              --num-epochs 1 \
+              --save-interval 25 \
+              --logging-steps 1 \
+              --dataset-size 3000 \
+              --max-turns 6 \
+              --temperature 0.8 \
+              --report-to none
+      volumeMounts:
+        - name: shmem
+          mountPath: /dev/shm
+        - name: fsx-storage
+          mountPath: /fsx
+  volumes:
+    - name: shmem
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi
+    - name: fsx-storage
+      persistentVolumeClaim:
+        claimName: ${FSX_PVC}
+    # The weight-reload worker extension, from neuron/neuron_weight_reload.py:
+    #   kubectl create configmap wordle-neuron-ext --from-file=neuron/neuron_weight_reload.py
+    - name: neuron-ext
+      configMap:
+        name: wordle-neuron-ext
