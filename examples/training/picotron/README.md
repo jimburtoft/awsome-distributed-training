@@ -45,3 +45,25 @@ Then use the saved token `${HF_TOKEN}` to create configuration.
 Each subdirectory contains example configurations for training different types of models:
 
 - `SmolLM-1.7B`: Training a 1.7B parameter LLM model on CPU/GPU using 3D parallelism.
+
+## AWS Trainium
+
+picotron runs on AWS Trainium (trn2) with [PyTorch Native](https://awsdocs-neuron.readthedocs-hosted.com/) (Neuron SDK 2.33, torch 2.14 + torch-neuronx). The [neuron](neuron) directory contains:
+
+| File | Purpose |
+|---|---|
+| [`neuron/Dockerfile`](neuron/Dockerfile) | Image on the public Neuron SDK 2.33 PyTorch Native image with picotron at the same commit |
+| [`neuron/patches/`](neuron/patches) | One picotron patch: transformers 5 compatibility, optional flash-attn and triton imports, `DEVICE=neuron` |
+| [`neuron/slurm/train-neuron.sbatch`](neuron/slurm/train-neuron.sbatch) | Slurm (Pyxis) job |
+
+Create a config with `--use_neuron`, which selects the `neuron` backend and the PyTorch attention path. Then build the image and submit:
+
+```bash
+docker build -t picotron-neuron -f neuron/Dockerfile .
+enroot import -o picotron-neuron.sqsh dockerd://picotron-neuron:latest
+python create_config.py --use_neuron --out_dir conf --exp_name smollm-neuron \
+    --model_name HuggingFaceTB/SmolLM-1.7B --dp 16 --tp 4 --seq_len 1024 --mbs 2 --hf_token ${HF_TOKEN}
+NPROC_PER_NODE=64 sbatch neuron/slurm/train-neuron.sbatch
+```
+
+Data and tensor parallelism work on a single instance. Pipeline and context parallelism send tensors point to point. On Trainium that goes over EFA, so it needs an instance whose Neuron devices have EFA attached (`trn2.48xlarge`); it does not run on `trn2.3xlarge`.

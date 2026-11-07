@@ -1,0 +1,134 @@
+From c1cabaf6e7283462e3d9d67aeb926605b58e3e72 Mon Sep 17 00:00:00 2001
+From: build <build@localhost>
+Date: Sat, 7 Nov 2026 11:15:38 +0000
+Subject: [PATCH] Run with transformers 5 and on AWS Trainium (DEVICE=neuron)
+
+---
+ picotron/context_parallel/cp_communications.py  |  3 ++-
+ picotron/data.py                                |  2 +-
+ picotron/data_parallel/bucket.py                |  2 +-
+ picotron/model.py                               | 14 +++++++++-----
+ picotron/pipeline_parallel/pp_communications.py |  6 ++++--
+ picotron/utils.py                               |  2 +-
+ 6 files changed, 18 insertions(+), 11 deletions(-)
+
+diff --git a/picotron/context_parallel/cp_communications.py b/picotron/context_parallel/cp_communications.py
+index 5b3c0ff..27d0675 100644
+--- a/picotron/context_parallel/cp_communications.py
++++ b/picotron/context_parallel/cp_communications.py
+@@ -48,7 +48,8 @@ class ContextCommunicate:
+                 operation_type = "send" if i % 2 == 0 else "receive"
+                 peer_rank = self.send_rank if operation_type == "send" else self.recv_rank
+                 print(f"RingComm | wait | STEP:{STEP} | RANK:{self.rank} | "f"ACTION:completed_{operation_type} | "f"{'FROM' if operation_type == 'receive' else 'TO'}:{peer_rank}", flush=True)
+-        torch.cuda.synchronize()
++        if torch.cuda.is_available():
++            torch.cuda.synchronize()
+         self._active_requests = None
+         self._pending_operations = []
+         if VERBOSE: print(f"RingComm | wait | STEP:{STEP} | RANK:{self.rank} | "f"ACTION:all_operations_completed", flush=True)
+\ No newline at end of file
+diff --git a/picotron/data.py b/picotron/data.py
+index e92bb36..07d0c90 100644
+--- a/picotron/data.py
++++ b/picotron/data.py
+@@ -57,7 +57,7 @@ class MicroBatchDataLoader(DataLoader):
+     @staticmethod
+     def tokenizer_group_text(examples, tokenizer, sequence_length):
+         """Tokenize a list of texts and group them in chunks of sequence_length + 1"""
+-        tokenized_text_batch = tokenizer.batch_encode_plus(
++        tokenized_text_batch = tokenizer(
+             examples,
+             return_attention_mask=False,
+             return_token_type_ids=False,
+diff --git a/picotron/data_parallel/bucket.py b/picotron/data_parallel/bucket.py
+index b42c2c0..49161b6 100644
+--- a/picotron/data_parallel/bucket.py
++++ b/picotron/data_parallel/bucket.py
+@@ -68,7 +68,7 @@ class BucketManager:
+             grad_type (torch.dtype, optional): Data type of gradients, defaults to torch.float32.
+         """
+         self.params = list(params) # Convert parameter generator to a list.
+-        self.device = self.params[0].device if self.params[0].is_cuda else torch.device("cpu")
++        self.device = self.params[0].device
+         self.buckets = [] # List of buckets.
+         self.process_group = process_group
+         self.process_group_size = dist.get_world_size(group=self.process_group)
+diff --git a/picotron/model.py b/picotron/model.py
+index 853dfeb..fa1fbfc 100644
+--- a/picotron/model.py
++++ b/picotron/model.py
+@@ -4,9 +4,12 @@ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+ from picotron.context_parallel import context_parallel
+-from flash_attn.flash_attn_interface import flash_attn_func
+-from flash_attn.layers.rotary import apply_rotary_emb
+-from flash_attn.ops.triton.layer_norm import layer_norm_fn
++try:  # CUDA-only kernels; the FLASH_ATTEN=0 path below does not use them
++    from flash_attn.flash_attn_interface import flash_attn_func
++    from flash_attn.layers.rotary import apply_rotary_emb
++    from flash_attn.ops.triton.layer_norm import layer_norm_fn
++except ImportError:
++    flash_attn_func = apply_rotary_emb = layer_norm_fn = None
+ import picotron.process_group_manager as pgm
+ 
+ def apply_rotary_pos_emb(x, cos, sin):
+@@ -24,7 +27,8 @@ def get_cos_sin(seq_length, head_dim, base=500000.0):
+     theta = 1.0 / (base ** (torch.arange(0, head_dim, 2, dtype=torch.int64).float().to('cpu') / head_dim))
+     dtype = torch.bfloat16 if os.getenv('DTYPE', 'bfloat16') == 'bfloat16' else torch.float32
+     local_rank = int(os.environ["LOCAL_RANK"])
+-    device = torch.device('cuda', local_rank) if os.getenv('DEVICE', 'cuda') == 'cuda' else torch.device('cpu')
++    device_type = os.getenv('DEVICE', 'cuda')
++    device = torch.device(device_type, local_rank) if device_type in ('cuda', 'neuron') else torch.device('cpu')
+     position = torch.arange(seq_length).to(device).unsqueeze(1).float() # [seq_length, 1]
+     # To match transformers implementation. m * theta should be computed on GPU
+     theta = theta.to(device)
+@@ -222,7 +226,7 @@ class DecoderLayer(nn.Module):
+         self.mlp = MLP(config)
+         self.layer_idx = layer_idx
+         head_dim = config.hidden_size // config.num_attention_heads
+-        self.cos, self.sin = get_cos_sin(config.max_position_embeddings, head_dim=head_dim , base=config.rope_theta) # [max_position_embeddings, head_dim]
++        self.cos, self.sin = get_cos_sin(config.max_position_embeddings, head_dim=head_dim , base=getattr(config, "rope_theta", None) or config.rope_parameters["rope_theta"]) # [max_position_embeddings, head_dim]
+ 
+         # For context parallelism, we split the input. We need to get the correct cos and sin for each split
+         self.cos, self.sin = context_parallel.update_rope_for_context_parallel(self.cos, self.sin)
+diff --git a/picotron/pipeline_parallel/pp_communications.py b/picotron/pipeline_parallel/pp_communications.py
+index fcbd31b..745d279 100644
+--- a/picotron/pipeline_parallel/pp_communications.py
++++ b/picotron/pipeline_parallel/pp_communications.py
+@@ -27,7 +27,8 @@ def pipeline_communicate(operation, device, dtype, tensor=None, shapes=None):
+     op = dist.P2POp(dist.isend if is_send else dist.irecv, tensor, peer_rank)
+     if VERBOSE: print(f"{operation} | {'sending' if is_send else 'receiving'} {operation.split('_')[1]} {pgm.process_group_manager.pp_rank} {'→' if is_send else '←'} {peer_rank} | STEP:{STEP} | RANK:{pgm.process_group_manager.pp_rank}", flush=True)
+     [req.wait() for req in dist.batch_isend_irecv([op])]
+-    torch.cuda.synchronize()
++    if torch.cuda.is_available():
++        torch.cuda.synchronize()
+     if VERBOSE: STEP += 1
+     return tensor if not is_send else None
+ 
+@@ -41,6 +42,7 @@ def bidirectional_pipeline_communicate(operation, send_tensor, recv_shapes, devi
+     reqs = dist.batch_isend_irecv([dist.P2POp(dist.isend, send_tensor, peer_rank), dist.P2POp(dist.irecv, recv_tensor, peer_rank)])
+     if VERBOSE: print(f"{operation} | sending {'next' if is_fwd else 'prev'} {pgm.process_group_manager.pp_rank} -> {peer_rank} | "f"receiving {'next' if is_fwd else 'prev'} {peer_rank} -> {pgm.process_group_manager.pp_rank} | "f"STEP {STEP=} | RANK:{pgm.process_group_manager.pp_rank}", flush=True)
+     [req.wait() for req in reqs]
+-    torch.cuda.synchronize()
++    if torch.cuda.is_available():
++        torch.cuda.synchronize()
+     if VERBOSE: STEP += 1
+     return recv_tensor
+\ No newline at end of file
+diff --git a/picotron/utils.py b/picotron/utils.py
+index 84da4cf..319c4c7 100644
+--- a/picotron/utils.py
++++ b/picotron/utils.py
+@@ -72,7 +72,7 @@ def get_num_params(model):
+             local_num_params += param.numel()
+             
+     # Gather parameter counts from all PP ranks
+-    param_counts = torch.tensor(local_num_params, device='cuda')
++    param_counts = torch.tensor(local_num_params, device=torch.device(os.getenv('DEVICE', 'cuda'), int(os.getenv('LOCAL_RANK', 0))))
+     
+     # Sum up parameters across all PP ranks
+     dist.all_reduce(param_counts, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.pp_group)
+-- 
+2.53.0
+

@@ -30,6 +30,7 @@ def create_single_config(
     exp_name: str,
     use_wandb: bool = False,
     use_cpu: bool = False,
+    use_neuron: bool = False,
     use_fused_adam: bool = False,
     hf_token: str = None
 ):
@@ -66,6 +67,10 @@ def create_single_config(
     if use_cpu:
         config_content["environment"]["FLASH_ATTEN"] = "0"
         config_content["distributed"]["backend"] = "gloo"
+    if use_neuron:
+        # AWS Trainium: NeuronCores with the "neuron" backend; FlashAttention 2 is CUDA-only.
+        config_content["environment"]["FLASH_ATTEN"] = "0"
+        config_content["distributed"]["backend"] = "neuron"
 
     config_content['logging']['use_wandb'] = use_wandb
     config_content['logging']['run_name'] = exp_name
@@ -106,6 +111,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name", type=str, help="Experiment name", default="dummy_exp")
     parser.add_argument("--use_wandb", action="store_true", help="Use wandb for logging")
     parser.add_argument("--use_cpu", action="store_true", help="Use CPU for training")
+    parser.add_argument("--use_neuron", action="store_true", help="Use AWS Trainium NeuronCores for training")
     parser.add_argument("--use_fused_adam", action="store_true", help="Use fused adam")
     parser.add_argument("--hf_token", type=str, help="HF token")
     print("Running create_config.py...")
@@ -131,6 +137,7 @@ if __name__ == "__main__":
         exp_name=args.exp_name,
         use_wandb=args.use_wandb,
         use_cpu=args.use_cpu,
+        use_neuron=args.use_neuron,
         use_fused_adam=args.use_fused_adam,
         hf_token=args.hf_token
     )    

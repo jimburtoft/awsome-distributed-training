@@ -79,7 +79,9 @@ if __name__ == "__main__":
     os.environ["OMP_NUM_THREADS"] = config["environment"]["OMP_NUM_THREADS"]
     os.environ["TOKENIZERS_PARALLELISM"] = config["environment"]["TOKENIZERS_PARALLELISM"]
     os.environ["FLASH_ATTEN"] = config["environment"]["FLASH_ATTEN"]
-    os.environ["DEVICE"] = "cpu" if config["distributed"]["use_cpu"] else "cuda"
+    # "neuron" selects AWS Trainium NeuronCores (PyTorch Native); it is set by backend "neuron" in the config.
+    use_neuron = config["distributed"].get("backend") == "neuron"
+    os.environ["DEVICE"] = "cpu" if config["distributed"]["use_cpu"] else ("neuron" if use_neuron else "cuda")
     if config["environment"].get("HF_TOKEN") is None:
         if "HF_TOKEN" not in os.environ: raise ValueError("HF_TOKEN is neither set in the config file nor in the environment")
     else:
@@ -87,19 +89,22 @@ if __name__ == "__main__":
             os.environ["HF_TOKEN"] = config["environment"]["HF_TOKEN"]
         else:
             print("Warning: HF_TOKEN is set in the environment and the config file. Using the environment variable.")
-    dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() and not config["distributed"]["use_cpu"] else torch.float32
+    dtype = torch.bfloat16 if (use_neuron or (torch.cuda.is_available() and torch.cuda.is_bf16_supported())) and not config["distributed"]["use_cpu"] else torch.float32
     assert (dtype == torch.bfloat16 and os.getenv("FLASH_ATTEN") == "1") or os.getenv("FLASH_ATTEN") != "1", "Kernel operations requires dtype=torch.bfloat16"
 
     local_rank = int(os.environ["LOCAL_RANK"])
     global_rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
 
-    backend = "gloo" if config["distributed"]["use_cpu"] else "nccl"
+    backend = "gloo" if config["distributed"]["use_cpu"] else ("neuron" if use_neuron else "nccl")
     
     assert config["training"]["seq_length"] % config["distributed"]["cp_size"] == 0, "seq_length must be divisible by cp_size for Context Parallelism"
     assert world_size == config["distributed"]["tp_size"] * config["distributed"]["pp_size"] * config["distributed"]["dp_size"] * config["distributed"]["cp_size"], "world_size must be equal to tp_size * pp_size * dp_size * cp_size"
 
-    if backend == "nccl":
+    if backend == "neuron":
+        import torch_neuronx  # noqa: F401  registers the "neuron" device and process-group backend
+        device = torch.device("neuron", local_rank)
+    elif backend == "nccl":
         torch.cuda.set_device(local_rank)
         device = torch.device("cuda", local_rank)
     else:
@@ -285,7 +290,7 @@ if __name__ == "__main__":
                 f"Tokens/s/GPU: {to_readable_format(tokens_per_second_per_gpu):>7s} | "
                 f"Tokens: {to_readable_format(trained_tokens):>7s}{('/' + to_readable_format(config['training']['max_tokens'])) if config['training']['max_tokens'] else ''} | "
                 f"MFU: {mfu:5.2f}% | "
-                f"Memory usage: {torch.cuda.memory_reserved() / 1e9:6.2f}GB",
+                f"Memory usage: {(torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0.0):6.2f}GB",
                 is_print_rank=is_wandb_rank
             )
         
@@ -296,7 +301,7 @@ if __name__ == "__main__":
                     "tokens_per_second": tokens_per_step / step_duration,
                     "mfu": mfu,
                     "tokens_per_second_per_gpu": tokens_per_second_per_gpu,
-                    "memory_usage": torch.cuda.memory_reserved() / 1e9,
+                    "memory_usage": (torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0.0),
                     "trained_tokens": trained_tokens
                 })
         
