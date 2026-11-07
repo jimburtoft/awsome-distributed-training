@@ -31,9 +31,17 @@ class MLP(nn.Module):
         logits = self.linear_relu_stack(x)
         return logits
 
+def use_neuron() -> bool:
+    # AWS Trainium (PyTorch Native / TorchNeuron). Opt-in so GPU and CPU behavior is unchanged.
+    return os.environ.get("DDP_DEVICE", "").lower() == "neuron"
+
 def ddp_setup():
-    # Use NCCL backend for GPU training, fallback to GLOO for CPU
-    if torch.cuda.is_available():
+    # Use NCCL backend for GPU training, the Neuron backend on Trainium, fallback to GLOO for CPU
+    if use_neuron():
+        import torch_neuronx  # noqa: F401  registers the "neuron" device and process-group backend
+        print("Using Neuron backend for Trainium training")
+        init_process_group(backend="neuron")
+    elif torch.cuda.is_available():
         print("Using NCCL backend for GPU training")
         init_process_group(backend="nccl")
     else:
@@ -61,14 +69,17 @@ class Trainer:
         self.use_mlflow = use_mlflow
         self.tracking_uri = tracking_uri if tracking_uri else f"file://{os.environ['HOME']}/mlruns"
         # Set device
-        self.device = torch.device(f"cuda:{os.environ['LOCAL_RANK']}" if torch.cuda.is_available() else "cpu")
+        if use_neuron():
+            self.device = torch.device(f"neuron:{os.environ['LOCAL_RANK']}")
+        else:
+            self.device = torch.device(f"cuda:{os.environ['LOCAL_RANK']}" if torch.cuda.is_available() else "cpu")
         self.model = self.model.to(self.device)
         
         if os.path.exists(snapshot_path):
             print("Loading snapshot")
             self._load_snapshot(snapshot_path)
 
-        self.model = DDP(self.model, device_ids=[self.device.index] if torch.cuda.is_available() else None)
+        self.model = DDP(self.model, device_ids=[self.device.index] if self.device.type == "cuda" else None)
 
     def _load_snapshot(self, snapshot_path):
         snapshot = torch.load(snapshot_path, map_location=self.device)
@@ -181,7 +192,7 @@ def prepare_dataloader(dataset: datasets.MNIST, batch_size: int):
     return DataLoader(
         dataset,
         batch_size=batch_size,
-        pin_memory=True,
+        pin_memory=torch.cuda.is_available(),
         shuffle=False,
         sampler=DistributedSampler(dataset)
     )
