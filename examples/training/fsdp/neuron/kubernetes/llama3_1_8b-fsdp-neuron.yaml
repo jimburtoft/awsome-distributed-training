@@ -1,0 +1,88 @@
+apiVersion: "kubeflow.org/v1"
+kind: PyTorchJob
+metadata:
+  name: llama3-1-8b-fsdp-neuron
+spec:
+  elasticPolicy:
+    rdzvBackend: c10d
+    minReplicas: 1
+    maxReplicas: 64
+    maxRestarts: 100
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 90
+  pytorchReplicaSpecs:
+    Worker:
+      replicas: $NUM_NODES
+      restartPolicy: OnFailure
+      template:
+        metadata:
+          labels:
+            app: llama3-1-8b-fsdp-neuron
+        spec:
+          volumes:
+            - name: shmem
+              hostPath: 
+                path: /dev/shm
+            - name: local
+              hostPath:
+                path: /mnt/k8s-disks/0
+          nodeSelector:
+            node.kubernetes.io/instance-type: "${INSTANCE_TYPE}"
+          containers:
+            - name: pytorch
+              image: ${IMAGE_URI}
+              imagePullPolicy: Always
+              resources:
+                requests:
+                  aws.amazon.com/neuron: $NEURON_DEVICES_PER_NODE
+                  vpc.amazonaws.com/efa: $EFA_PER_NODE
+                limits:
+                  aws.amazon.com/neuron: $NEURON_DEVICES_PER_NODE
+                  vpc.amazonaws.com/efa: $EFA_PER_NODE
+              env:
+              - name: FSDP_DEVICE
+                value: "neuron"
+              - name: FI_PROVIDER
+                value: "efa"
+              - name: FI_EFA_USE_DEVICE_RDMA
+                value: "1"
+              - name: FI_EFA_FORK_SAFE
+                value: "1"
+              - name: HF_HUB_ETAG_TIMEOUT
+                value: "60"
+              - name: HF_TOKEN
+                value: "${HF_TOKEN}"
+              command:
+                - /usr/local/bin/torchrun
+                - --nproc_per_node=$NEURON_CORES_PER_NODE
+                - --nnodes=$NUM_NODES
+                - /opt/fsdp/train.py
+                - --max_context_width=8192
+                - --num_key_value_heads=8
+                - --intermediate_size=14336
+                - --hidden_width=4096
+                - --num_layers=32
+                - --num_heads=32
+                - --model_type=llama_v3
+                - --tokenizer=hf-internal-testing/llama-tokenizer
+                - --checkpoint_freq=50
+                - --validation_freq=25
+                - --max_steps=50
+                - --checkpoint_dir=./checkpoints
+                - --dataset=allenai/c4
+                - --dataset_config_name=en
+                - --resume_from_checkpoint=./checkpoints
+                - --train_batch_size=1
+                - --val_batch_size=1
+                - --sharding_strategy=full # https://pytorch.org/docs/stable/fsdp.html
+                - --offload_activations=1
+              volumeMounts:
+                - name: shmem
+                  mountPath: /dev/shm
+                - name: local
+                  mountPath: /local

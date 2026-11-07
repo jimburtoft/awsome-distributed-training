@@ -22,7 +22,8 @@ logger = get_logger()
 
 def save_checkpoint(model, optimizer, scheduler, user_content, root_dir, sub_dir):
     """Save checkpoint using FSDP2 DTensor state dict APIs."""
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     save_dir = os.path.join(root_dir, sub_dir)
     if dist.get_rank() == 0:

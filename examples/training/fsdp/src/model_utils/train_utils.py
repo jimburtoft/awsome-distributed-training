@@ -511,7 +511,7 @@ def create_streaming_dataloader(dataset,
     train_dataloader = DataLoader(train_concat_dataset,
                                        batch_size=batch_size,
                                        num_workers=workers,
-                                       pin_memory=True,
+                                       pin_memory=torch.cuda.is_available(),
                                        prefetch_factor=4,
                                        timeout=600)
     return train_dataloader

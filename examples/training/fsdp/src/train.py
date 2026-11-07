@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT-0
 
 import functools
+import os
 import math
 import time
 
@@ -145,11 +146,21 @@ def train(
                 break
             
 
+def use_neuron():
+    # AWS Trainium (PyTorch Native / TorchNeuron). Opt-in so GPU behavior is unchanged.
+    return os.environ.get("FSDP_DEVICE", "").lower() == "neuron"
+
+
 def main(args):
-    dist.init_process_group()
+    if use_neuron():
+        import torch_neuronx  # noqa: F401  registers the "neuron" device and process-group backend
+        dist.init_process_group(backend="neuron")
+        device = torch.device("neuron", int(os.environ["LOCAL_RANK"]))
+    else:
+        dist.init_process_group()
+        device = dist.get_rank() % torch.cuda.device_count()
+        torch.cuda.set_device(device)
     global_rank = dist.get_rank()
-    device = global_rank % torch.cuda.device_count()
-    torch.cuda.set_device(device)
     world_size = dist.get_world_size()
     
     if args.bf16:
@@ -163,7 +174,8 @@ def main(args):
     
     # Initialize model on meta device
     with torch.device("meta"):
-        model = AutoModelForCausalLM.from_config(model_config)
+        model = AutoModelForCausalLM.from_config(
+            model_config, attn_implementation=os.environ.get("ATTN_IMPL", "sdpa"))
     
     num_params = compute_num_params(model)
     if global_rank == 0:
@@ -204,10 +216,10 @@ def main(args):
     # Apply fully_shard to root model
     fully_shard(model, **fsdp_kwargs)
     
-    # Move model from meta device to CUDA, then initialize weights and buffers.
+    # Move model from meta device to the accelerator, then initialize weights and buffers.
     # to_empty() only allocates memory; without initialization the parameters (and the rotary
     # inv_freq buffers) hold whatever was in device memory.
-    model.to_empty(device=torch.device("cuda"))
+    model.to_empty(device=torch.device("neuron", int(os.environ["LOCAL_RANK"])) if use_neuron() else torch.device("cuda"))
     model.initialize_weights()
 
     if global_rank == 0:
