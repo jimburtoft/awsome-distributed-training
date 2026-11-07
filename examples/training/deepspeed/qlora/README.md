@@ -186,6 +186,37 @@ target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
 | Optimizer | paged_adamw_8bit | Memory-efficient |
 | Precision | bfloat16 | Mixed precision |
 
+## AWS Trainium
+
+QLoRA depends on bitsandbytes 4-bit kernels and DeepSpeed, which have no AWS Neuron backend. On AWS Trainium (trn2), [`neuron/`](neuron) runs the same fine-tuning task with the closest native equivalent: the same Qwen3-8B model, dataset, prompt format and LoRA settings (read from the same `configs/*.yaml`), with these changes:
+
+| QLoRA on GPU | AWS Trainium |
+|---|---|
+| NF4 weights (bitsandbytes) | bf16 weights |
+| DeepSpeed ZeRO-2/3 | PyTorch FSDP2 through the Hugging Face Trainer, wrapping `Qwen3DecoderLayer` |
+| `paged_adamw_8bit` | PyTorch AdamW |
+| Dynamic padding | Fixed-length padding to `max_seq_length`, so every step reuses the compiled graphs |
+
+Sharding the bf16 weights across NeuronCores replaces the memory saving that 4-bit quantization provides: a single `trn2.3xlarge` (4 logical NeuronCores, 96 GB of device memory) fits Qwen3-8B with FSDP2.
+
+| File | Purpose |
+|---|---|
+| [`neuron/Dockerfile`](neuron/Dockerfile) | Image built on the public Neuron SDK 2.33 PyTorch Native image |
+| [`neuron/train_lora_fsdp.py`](neuron/train_lora_fsdp.py) | bf16 LoRA + FSDP2 training script; reuses `src/config.py` and `src/data_preparation.py` |
+| [`neuron/train-neuron.sbatch`](neuron/train-neuron.sbatch) | Slurm (Pyxis) job |
+
+```bash
+docker build -t qlora-neuron -f neuron/Dockerfile .
+enroot import -o qlora-neuron.sqsh dockerd://qlora-neuron:latest
+
+# trn2.48xlarge: 64 processes; trn2.3xlarge: NPROC_PER_NODE=4
+sbatch neuron/train-neuron.sbatch
+# Short test run
+NPROC_PER_NODE=4 sbatch neuron/train-neuron.sbatch --max_steps 20 --max_samples 400
+```
+
+The adapter is written to `${OUTPUT_DIR}/final_adapter` and can be loaded with `src/inference_demo.py` like the QLoRA adapter.
+
 ## Infrastructure
 
 | Component | Spec | Notes |
