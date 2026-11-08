@@ -1,0 +1,71 @@
+# GPT-OSS-20B LoRA SFT on AWS Trainium (trn2) with a Kubeflow PyTorchJob and torchrun.
+# Render with: envsubst < neuron/train-lora-neuron.yaml-template | kubectl apply -f -
+#
+# hyperpodrun (hyperpod-elastic-agent) does not start on torch 2.14, the version in the Neuron
+# SDK 2.33 image, so this job uses torchrun without HyperPod elastic restarts.
+#
+# Required env vars:
+#   IMAGE_URI               image built from neuron/Dockerfile
+#   HF_TOKEN                Hugging Face token
+#   INSTANCE_TYPE           ml.trn2.3xlarge or ml.trn2.48xlarge
+#   NUM_NODES               number of instances
+#   NEURON_DEVICES_PER_NODE 1 (trn2.3xlarge) or 16 (trn2.48xlarge)
+#   NEURON_CORES_PER_NODE   4 (trn2.3xlarge) or 64 (trn2.48xlarge), one process per logical NeuronCore
+#   EFA_PER_NODE            1 (trn2.3xlarge) or 16 (trn2.48xlarge)
+apiVersion: "kubeflow.org/v1"
+kind: PyTorchJob
+metadata:
+  name: gpt-oss-lora-neuron
+spec:
+  pytorchReplicaSpecs:
+    Worker:
+      replicas: ${NUM_NODES}
+      restartPolicy: OnFailure
+      template:
+        spec:
+          nodeSelector:
+            node.kubernetes.io/instance-type: ${INSTANCE_TYPE}
+          volumes:
+            - name: shmem
+              emptyDir: {medium: Memory, sizeLimit: 64Gi}
+            - name: fsx-storage
+              persistentVolumeClaim: {claimName: fsx-claim}
+          containers:
+            - name: pytorch
+              image: ${IMAGE_URI}
+              imagePullPolicy: Always
+              resources:
+                requests: {aws.amazon.com/neuron: "${NEURON_DEVICES_PER_NODE}", vpc.amazonaws.com/efa: "${EFA_PER_NODE}"}
+                limits: {aws.amazon.com/neuron: "${NEURON_DEVICES_PER_NODE}", vpc.amazonaws.com/efa: "${EFA_PER_NODE}"}
+              env:
+                - {name: HF_TOKEN, value: "${HF_TOKEN}"}
+                - {name: HF_HOME, value: /fsx/hf_cache}
+                - {name: FI_PROVIDER, value: efa}
+                - {name: FI_EFA_USE_DEVICE_RDMA, value: "1"}
+                - {name: FI_EFA_FORK_SAFE, value: "1"}
+              command: ["torchrun"]
+              args:
+                - --nnodes=${NUM_NODES}
+                - --nproc_per_node=${NEURON_CORES_PER_NODE}
+                - /opt/gpt-oss/sft.py
+                # TrlParser reads the YAML only from `--config <path>` (two arguments), not `--config=<path>`.
+                - --config
+                - /opt/gpt-oss/configs/sft_lora.yaml
+                - --output_dir=/fsx/checkpoints
+                - --bf16=True
+                - --per_device_train_batch_size=1
+                - --gradient_checkpointing=true
+                # Fixed-length packed sequences: one compiled graph instead of one per batch length.
+                - --packing=true
+                - --packing_strategy=wrapped
+                - --max_length=1024
+                - --max_steps=1000
+                - --save_steps=25
+                - --save_total_limit=5
+                - --logging_steps=1
+                - --report_to=none
+                - --fsdp=full_shard auto_wrap
+                - '--fsdp_config={"version": 2, "transformer_layer_cls_to_wrap": ["GptOssDecoderLayer"], "cpu_ram_efficient_loading": true}'
+              volumeMounts:
+                - {name: shmem, mountPath: /dev/shm}
+                - {name: fsx-storage, mountPath: /fsx}

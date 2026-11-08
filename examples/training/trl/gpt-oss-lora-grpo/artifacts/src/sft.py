@@ -24,7 +24,7 @@ accelerate launch \
 """
 
 from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, Mxfp4Config
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, Mxfp4Config
 
 from trl import (
     ModelConfig,
@@ -40,7 +40,11 @@ def main(script_args, training_args, model_args):
     # ------------------------
     # Load model & tokenizer
     # ------------------------
-    quantization_config = Mxfp4Config(dequantize=True)
+    # Dequantize MXFP4 checkpoints (openai/gpt-oss-*) to bf16 for training; leave others as is.
+    checkpoint_quant = getattr(
+        AutoConfig.from_pretrained(model_args.model_name_or_path), "quantization_config", None
+    )
+    quantization_config = Mxfp4Config(dequantize=True) if checkpoint_quant else None
     model_kwargs = dict(
         revision=getattr(model_args, 'model_revision', None),
         trust_remote_code=getattr(model_args, 'trust_remote_code', False),

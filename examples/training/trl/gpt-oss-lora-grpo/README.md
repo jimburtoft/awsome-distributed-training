@@ -255,6 +255,44 @@ kubectl logs eval-grpo --tail=50
 kubectl exec fsx-storage-manager -- cat /fsx/experiments/grpo_eval_checkpoint{checkpoint_number}_{timestamp}.txt
 ```
 
+## AWS Trainium (PyTorch Native): SFT LoRA
+
+[`neuron/`](neuron/) runs the SFT LoRA step (section 3) on AWS Trainium with PyTorch Native: `torch-neuronx` 2.14 in the public Neuron SDK 2.33 image.
+
+- It uses the same `artifacts/src/sft.py` and `configs/sft_lora.yaml`.
+- The model is sharded with FSDP2 through the Hugging Face Trainer.
+- There is one process per NeuronCore.
+
+| File | Purpose |
+|------|---------|
+| `neuron/Dockerfile` | `FROM public.ecr.aws/neuron/torch-neuronx:2.14.0-neuronx-py314-sdk2.33.0-ubuntu26.04` with transformers 5.22.1, TRL 1.6.0, PEFT 0.21.2 |
+| `neuron/train-lora-neuron.yaml-template` | Kubeflow `PyTorchJob` with `torchrun`, Neuron and EFA resources |
+
+```bash
+docker build -f neuron/Dockerfile -t ${REGISTRY}gpt-oss-neuron:latest . && docker push ${REGISTRY}gpt-oss-neuron:latest
+export IMAGE_URI=${REGISTRY}gpt-oss-neuron:latest INSTANCE_TYPE=ml.trn2.48xlarge NUM_NODES=1 \
+       NEURON_DEVICES_PER_NODE=16 NEURON_CORES_PER_NODE=64 EFA_PER_NODE=16
+envsubst < neuron/train-lora-neuron.yaml-template | kubectl apply -f -
+```
+
+The Neuron job differs from the GPU manifest in these ways:
+
+- **Launcher.** It uses `torchrun` instead of `hyperpodrun`, because `hyperpod-elastic-agent` does not start on torch 2.14. The job therefore has no HyperPod elastic restarts.
+- **Packing.** It packs the data (`--packing=true --packing_strategy=wrapped --max_length=1024`), so every batch has the same shape and the Neuron compiler builds one graph.
+- **`--config`.** The config is passed as `--config <path>`. TRL's parser ignores `--config=<path>`.
+- **Dequantization.** `sft.py` now dequantizes only checkpoints that are MXFP4-quantized, such as `openai/gpt-oss-20b`. Previously it forced `Mxfp4Config` on every model, which fails for unquantized ones.
+
+Measured on one trn2.3xlarge (4 NeuronCores, LNC=2, SDK 2.33) with `openai/gpt-oss-20b`:
+
+- Setup: LoRA r=8 on all linear layers, bf16 weights, FSDP2 over 4 ranks, gradient checkpointing, 1024-token packed sequences.
+- Batch: 1 per rank × 4 accumulation steps, so 16 sequences per step.
+- Model load: about 18 minutes. Most of it is MXFP4 dequantization on the host, which peaks at about 110 GB of host RAM.
+- First step: about 3 minutes, mostly compilation.
+- Steady state: 43.5 s per step (about 377 tokens/s).
+- Over 30 steps, the training loss fell from 1.82 to 1.17 and the mean token accuracy rose from 0.60 to 0.70.
+
+The GRPO step (section 4) serves the policy from vLLM, and that is not ported yet. vLLM Neuron has `GptOssForCausalLM`, but a weight-synchronized TRL GRPO loop for a 20B policy needs a trn2.48xlarge.
+
 ## References
 
 ### Checkpoints
