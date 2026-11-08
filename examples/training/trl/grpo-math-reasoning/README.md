@@ -92,6 +92,45 @@ In addition to the training logs, you can inspect the training progress by monit
 
 ![GRPO training progress on Weights & Biases](grpo_wandb.png)
 
+## AWS Trainium (PyTorch Native)
+
+[`neuron/`](neuron/) runs this GRPO recipe on AWS Trainium (trn2):
+
+- **Rollouts** come from [vLLM on AWS Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/vllm-neuron/docs/index.html) 0.29.
+- **Training** uses PyTorch Native (Neuron SDK 2.33) with TRL 1.17 and FSDP2.
+- `train.py` itself is unchanged.
+
+| File | Purpose |
+|------|---------|
+| `neuron/Dockerfile` | Trainer image on `public.ecr.aws/neuron/torch-neuronx:2.14.0-neuronx-py314-sdk2.33.0-ubuntu26.04` |
+| `neuron/train_neuron.py` | Runs `train.py` in TRL 1.x server mode, with bf16 weights and settings from the environment (`GRPO_BATCH_SIZE`, `GRPO_NUM_GENERATIONS`, `GRPO_MAX_COMPLETION`, `GRPO_MAX_STEPS`) |
+| `neuron/trl_neuron_weight_sync.py`, `neuron/neuron_weight_reload.py` | Policy-weight sync from the trainer to vLLM on AWS Neuron |
+| `neuron/fsdp2.yaml` | `accelerate` FSDP2 config (replaces `deepspeed_zero3.yaml`, since DeepSpeed has no Neuron backend) |
+| `neuron/train-neuron.sbatch` | Slurm job: the last node runs vLLM on AWS Neuron, the other nodes train |
+
+```bash
+docker build -f neuron/Dockerfile -t grpo-math-neuron .
+enroot import -o ./grpo-math-neuron.sqsh dockerd://grpo-math-neuron:latest
+enroot import -o ./vllm-neuron-0.29.sqsh \
+  docker://public.ecr.aws#neuron/pytorch-inference-vllm-neuronx:0.29.0.1.2.0-neuronx-py314-sdk2.33.0-ubuntu26.04
+sbatch neuron/train-neuron.sbatch Qwen/Qwen3-8B
+```
+
+How it differs from the GPU path:
+
+- **Model.** vLLM on AWS Neuron 0.29 has no Qwen2 / Qwen2.5 support, so the Neuron recipe uses Qwen3 (`Qwen/Qwen3-8B` by default).
+- **Weight sync.** TRL sends policy weights to `trl vllm-serve` over NCCL, which needs CUDA. On Trainium, the trainer writes the gathered bf16 weights to a shared directory (`NEURON_WEIGHT_SYNC_DIR`), and the server copies them into the running model in place. The compiled graphs are reused, so nothing recompiles.
+- **Server mode.** TRL 1.x defaults to colocated vLLM. The wrapper selects server mode, which is what `--vllm_server_host` meant in TRL 0.x. It also turns off Qwen3's chat-template thinking, because the system prompt asks for its own `<think>`/`<answer>` format.
+
+Measured on one trn2.3xlarge (SDK 2.33), as a functional test with a small model:
+
+- Layout: vLLM on AWS Neuron on NeuronCore 0 (`Qwen/Qwen3-0.6B`, TP=1); the trainer on NeuronCores 2-3 (FSDP2 × 2).
+- Batch: 8 completions per prompt, batch 8 per rank, completions up to 256 tokens.
+- 40 GRPO steps finished with 40 weight syncs. The steady state was about 15 s per step.
+- The served policy changed. Completions went from clipped at 256 tokens to bare `<answer> … </answer>` replies of about 9 tokens.
+
+The 0.6B model learns the answer tags (half of `simple_format_reward`) but not the `<think>` block or the math, so that run does not measure accuracy. Accuracy needs the 8B recipe on trn2.48xlarge, which has not been run yet.
+
 ## Inference
 
 ```bash
