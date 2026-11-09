@@ -14,6 +14,8 @@
     GRPO_MAX_STEPS         stop after this many steps (default: one epoch)
     GRPO_REPORT_TO         report_to (train.py: wandb)
     GRPO_LOGGING_STEPS     logging_steps (train.py: 10)
+    GRPO_MAX_PROMPT        drop training prompts longer than this many tokens (default 768), so prompt +
+                           completion fits the vLLM server's --max-model-len (TRL 1.x has no max_prompt_length)
     GRPO_ENABLE_THINKING   Qwen3 chat-template thinking mode (default 0: train.py asks for its own
                            <think>/<answer> format, and thinking mode clips most completions)
 """
@@ -58,6 +60,30 @@ def _neuron_post_init(self, *a, **k):
 
 
 GRPOConfig.__post_init__ = _neuron_post_init
+
+from trl import GRPOTrainer  # noqa: E402
+
+_trainer_init = GRPOTrainer.__init__
+
+
+def _filtered_init(self, *a, train_dataset=None, **k):
+    limit = int(os.environ.get("GRPO_MAX_PROMPT", "768"))
+    if train_dataset is not None and limit > 0:
+        from transformers import AutoTokenizer
+
+        model = k.get("model", a[0] if a else None)
+        tok = AutoTokenizer.from_pretrained(model if isinstance(model, str) else model.name_or_path)
+        before = len(train_dataset)
+        def n_tokens(ex):
+            ids = tok.apply_chat_template(ex["prompt"], tokenize=True, add_generation_prompt=True)
+            return len(ids["input_ids"] if hasattr(ids, "keys") else ids)  # BatchEncoding in transformers 5
+
+        train_dataset = train_dataset.filter(lambda ex: n_tokens(ex) <= limit)
+        print(f"[train_neuron] kept {len(train_dataset)}/{before} prompts of <= {limit} tokens", flush=True)
+    return _trainer_init(self, *a, train_dataset=train_dataset, **k)
+
+
+GRPOTrainer.__init__ = _filtered_init
 
 if __name__ == "__main__":
     script = os.path.join(HERE, "..", "train.py")
