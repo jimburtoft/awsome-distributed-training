@@ -19,18 +19,20 @@ export FI_PROVIDER=efa
 export FI_EFA_USE_DEVICE_RDMA=1
 export FI_EFA_FORK_SAFE=1
 
-# One process per NeuronCore, as reported by neuron-ls for this instance:
-# trn1.32xlarge: 32; trn2.3xlarge: 4; trn2.48xlarge: 64 (LNC=2, the default).
-NPROC_PER_NODE=${NPROC_PER_NODE:-$(neuron-ls --json-output | python3 -c 'import json, sys; print(sum(d["nc_count"] for d in json.load(sys.stdin)))')}
+# Read the instance type and NeuronCore count from neuron-ls. If either cannot be read, the trn2.48xlarge
+# values are used (64 ranks, default settings).
+NEURON_LS=$(neuron-ls --json-output 2>/dev/null || true)
+INSTANCE_TYPE=$(python3 -c 'import json, sys; print(json.loads(sys.argv[1])[0]["instance_type"])' "$NEURON_LS" 2>/dev/null || true)
+NEURON_CORES=$(python3 -c 'import json, sys; print(sum(d["nc_count"] for d in json.loads(sys.argv[1])))' "$NEURON_LS" 2>/dev/null || true)
 
-# trn1 only: DDP checks parameter shapes across ranks with int64 collectives, which need the
-# packed int64 mode on Trainium1 (NeuronCore-v2). trn2 keeps the default mode (native).
-INSTANCE_TYPE=$(neuron-ls --json-output | python3 -c 'import json, sys; print(json.load(sys.stdin)[0]["instance_type"])')
+# One process per NeuronCore: trn2.3xlarge: 4; trn2.48xlarge: 64 (LNC=2, the default).
+NPROC_PER_NODE=${NPROC_PER_NODE:-${NEURON_CORES:-64}}
+
+# trn1 (testing only, not supported): see docs/neuron-trn1-pytorch-native.md. trn2 uses the default.
 case "$INSTANCE_TYPE" in
-    trn1*) DEFAULT_INT64_MODE=packed ;;
-    *)     DEFAULT_INT64_MODE=native ;;
+    trn1*) export TORCH_NEURONX_INT64_MODE=packed ;;
+    *)     export TORCH_NEURONX_INT64_MODE=native ;;
 esac
-export TORCH_NEURONX_INT64_MODE=${TORCH_NEURONX_INT64_MODE:-$DEFAULT_INT64_MODE}
 
 declare -a ARGS=(
     --container-image ${PWD}/pytorch-neuron.sqsh
