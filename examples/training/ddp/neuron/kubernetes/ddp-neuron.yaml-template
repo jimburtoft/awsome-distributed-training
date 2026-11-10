@@ -114,6 +114,10 @@ spec:
               env:
                 - name: DDP_DEVICE
                   value: "neuron"
+                # trn1 only: set TORCH_NEURONX_INT64_MODE=packed before envsubst (int64 collectives in
+                # DDP's parameter check). trn2: native, the default.
+                - name: TORCH_NEURONX_INT64_MODE
+                  value: "${TORCH_NEURONX_INT64_MODE}"
                 - name: FI_PROVIDER
                   value: "efa"
                 - name: FI_EFA_USE_DEVICE_RDMA
