@@ -1,7 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-# AWS Trainium (trn2) image for the PyTorch DDP example: Neuron SDK 2.33, PyTorch Native (torch 2.14 + torch-neuronx).
+# AWS Trainium (trn1, trn2) image for the PyTorch DDP example: Neuron SDK 2.33, PyTorch Native (torch 2.14 + torch-neuronx).
 # The base image pins torch through PIP_CONSTRAINT, so extras cannot replace the Neuron build of torch.
 FROM public.ecr.aws/neuron/torch-neuronx:2.14.0-neuronx-py314-sdk2.33.0-ubuntu26.04
 

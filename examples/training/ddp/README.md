@@ -77,7 +77,7 @@ The MLFlow UI provides:
 
 ## AWS Trainium
 
-The same `ddp.py` runs on AWS Trainium (trn2) with [PyTorch Native](https://awsdocs-neuron.readthedocs-hosted.com/) (Neuron SDK 2.33, torch 2.14 + torch-neuronx). Set `DDP_DEVICE=neuron` to select the `neuron` process-group backend and one NeuronCore per rank. GPU and CPU runs are unchanged.
+The same `ddp.py` runs on AWS Trainium (trn1 and trn2) with [PyTorch Native](https://awsdocs-neuron.readthedocs-hosted.com/) (Neuron SDK 2.33, torch 2.14 + torch-neuronx). Set `DDP_DEVICE=neuron` to select the `neuron` process-group backend and one NeuronCore per rank. GPU and CPU runs are unchanged.
 
 The [neuron](neuron) directory contains:
 
@@ -88,7 +88,15 @@ The [neuron](neuron) directory contains:
 | [`neuron/slurm/1.container-train.sbatch`](neuron/slurm/1.container-train.sbatch) | Multi-node Slurm job (SageMaker HyperPod or ParallelCluster) |
 | [`neuron/kubernetes/ddp-neuron.yaml-template`](neuron/kubernetes/ddp-neuron.yaml-template) | PyTorchJob that requests Neuron devices and EFA |
 
-Run one process per logical NeuronCore: 4 on `trn2.3xlarge` and 64 on `trn2.48xlarge` (at the default logical NeuronCore size of 2).
+Run one process per NeuronCore: 2 on `trn1.2xlarge`, 32 on `trn1.32xlarge`, 4 on `trn2.3xlarge` and 64 on `trn2.48xlarge` (trn2 at the default logical NeuronCore size of 2). The Slurm job reads the count from `neuron-ls`.
+
+### Trainium1 (trn1)
+
+trn1 needs one setting and no code change: `TORCH_NEURONX_INT64_MODE=packed`. Without it, DDP's startup check of parameter shapes across ranks, which uses int64 collectives, fails on trn1 with `params[0] in this process with sizes [512, 784] appears not to match sizes of the same param in process 0`. trn2 uses the default mode (`native`).
+
+- Slurm: `1.container-train.sbatch` sets it from the instance type that `neuron-ls` reports.
+- Kubernetes: `export TORCH_NEURONX_INT64_MODE=packed` before `envsubst` (use `native` on trn2).
+- Docker: pass `-e TORCH_NEURONX_INT64_MODE=packed`.
 
 ```bash
 # Slurm (from examples/training/ddp/neuron/slurm)
@@ -101,6 +109,7 @@ NPROC_PER_NODE=64 sbatch --nodes 2 1.container-train.sbatch
 export IMAGE_URI=<your ECR repository>/ddp-neuron:latest   # built from neuron/Dockerfile
 export INSTANCE_TYPE=ml.trn2.48xlarge NUM_NODES=2
 export NEURON_DEVICES_PER_NODE=16 NEURON_CORES_PER_NODE=64 EFA_PER_NODE=16
+export TORCH_NEURONX_INT64_MODE=native   # trn1 (ml.trn1.32xlarge: 16 devices, 32 cores, 8 EFA): packed
 envsubst < ddp-neuron.yaml-template | kubectl apply -f -
 ```
 
@@ -110,7 +119,18 @@ Single node, without a scheduler:
 docker build -t ddp-neuron -f neuron/Dockerfile .
 docker run --rm --privileged --shm-size=8g --entrypoint torchrun ddp-neuron \
   --nproc_per_node=4 /opt/ddp/ddp.py --total_epochs=3 --save_every=1 --batch_size=64
+
+# trn1.2xlarge (2 NeuronCores)
+docker run --rm --privileged --shm-size=8g -e TORCH_NEURONX_INT64_MODE=packed --entrypoint torchrun ddp-neuron \
+  --nproc_per_node=2 /opt/ddp/ddp.py --total_epochs=3 --save_every=1 --batch_size=64
 ```
+
+Measured with the public Neuron SDK 2.33 image (3 epochs, batch 64 per rank; snapshot save and resume checked):
+
+| Instance | Ranks | Loss per epoch (rank 0) |
+|---|---|---|
+| trn1.2xlarge | 2 | 0.217, 0.085, 0.061 |
+| trn2.3xlarge | 4 | 0.221, 0.081 (2 epochs) |
 
 ## Deployment
 
