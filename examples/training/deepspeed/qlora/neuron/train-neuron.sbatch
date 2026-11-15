@@ -43,4 +43,4 @@ if [ -d "/opt/sagemaker_cluster" ]; then
     AUTO_RESUME="--auto-resume=1"
 fi
 srun ${AUTO_RESUME} -l "${ARGS[@]}" torchrun "${TORCHRUN_ARGS[@]}" \
-    neuron/train_lora_fsdp.py --config_path ${CONFIG} --output_dir ${OUTPUT_DIR} "$@"
+    src/train_lora_fsdp2.py --config_path ${CONFIG} --output_dir ${OUTPUT_DIR} "$@"

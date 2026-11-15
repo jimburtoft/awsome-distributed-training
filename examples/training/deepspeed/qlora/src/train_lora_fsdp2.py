@@ -1,22 +1,25 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-"""bf16 LoRA fine-tuning of Qwen3-8B on AWS Trainium: the Neuron alternative to the QLoRA example.
+"""bf16 LoRA fine-tuning of Qwen3-8B with PyTorch FSDP2: a QLoRA alternative that runs on GPUs and on AWS Trainium.
 
-Same model, dataset, prompt format and LoRA settings as ../src/train.py, but:
+Same model, dataset, prompt format and LoRA settings as train.py, but:
 
-- bf16 weights instead of bitsandbytes NF4 (bitsandbytes has no Neuron backend), sharded across
-  NeuronCores with PyTorch FSDP2, instead of DeepSpeed ZeRO.
+- bf16 weights instead of bitsandbytes NF4, sharded across ranks with PyTorch FSDP2 instead of DeepSpeed ZeRO.
+  bitsandbytes and DeepSpeed are CUDA-only; FSDP2 and LoRA (PEFT) are plain PyTorch.
 - PyTorch AdamW instead of paged_adamw_8bit.
-- Sequences padded to a fixed length so every step reuses the same compiled graphs.
+- Every batch is padded to max_seq_length. This keeps shapes static, which AWS Trainium needs (one compiled
+  graph per shape); on GPUs it only costs some padding.
 
-Launch with torchrun (one process per logical NeuronCore):
+The same script runs on both. The Hugging Face Trainer picks the device: CUDA on GPUs, and the
+"neuron" device when torch-neuronx is installed (AWS Neuron SDK 2.33+, PyTorch Native).
 
-    torchrun --nproc_per_node=4 neuron/train_lora_fsdp.py --config_path configs/training_config_zero2.yaml
+    torchrun --nproc_per_node=<GPUs or NeuronCores> src/train_lora_fsdp2.py --config_path configs/training_config_zero2.yaml
 """
 
 import argparse
 import logging
+import math
 import os
 import sys
 
@@ -24,7 +27,7 @@ import torch
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import FullConfig  # noqa: E402
 from data_preparation import load_medical_dataset, preprocess_dataset  # noqa: E402
 
@@ -42,7 +45,7 @@ def parse_args():
 
 
 def pad_collator(tokenizer, max_length):
-    """Pad every batch to max_length (static shapes for the Neuron compiler)."""
+    """Pad every batch to max_length (static shapes; required on Trainium, harmless on GPUs)."""
     def collate(features):
         ids = torch.full((len(features), max_length), tokenizer.pad_token_id, dtype=torch.long)
         labels = torch.full((len(features), max_length), -100, dtype=torch.long)
@@ -58,6 +61,8 @@ def pad_collator(tokenizer, max_length):
 
 def main():
     args = parse_args()
+    # FSDP2: transformers >= 5 reads fsdp_config["version"]; older releases leave it to accelerate, which reads FSDP_VERSION.
+    os.environ.setdefault("FSDP_VERSION", "2")
     config = FullConfig.from_yaml(args.config_path)
     m, q, d, t = config.model, config.qlora, config.data, config.training
 
@@ -71,15 +76,23 @@ def main():
     train_ds = preprocess_dataset(train_raw, tokenizer, max_length=m.max_seq_length)
     eval_ds = preprocess_dataset(eval_raw, tokenizer, max_length=m.max_seq_length)
 
-    # bf16 weights; FSDP2 shards them across ranks. attn_implementation can be overridden with ATTN_IMPL.
+    # Load in float32 and let FSDP2 mixed precision (bf16=True) run the forward and backward in bf16. FSDP2 needs one
+    # parameter dtype per wrapped module, and the LoRA weights PEFT adds are float32. The float32 copy is sharded
+    # across ranks. LOAD_DTYPE=bfloat16 halves the memory on stacks that accept mixed dtypes (torch-neuronx 2.14).
+    # attn_implementation can be overridden with ATTN_IMPL.
     model = AutoModelForCausalLM.from_pretrained(
-        m.model_name, dtype=torch.bfloat16, trust_remote_code=m.trust_remote_code,
+        m.model_name, dtype=getattr(torch, os.environ.get("LOAD_DTYPE", "float32")), trust_remote_code=m.trust_remote_code,
         attn_implementation=os.environ.get("ATTN_IMPL", "sdpa"))
     model.config.use_cache = False
     model = get_peft_model(model, LoraConfig(
         r=q.lora_r, lora_alpha=q.lora_alpha, lora_dropout=q.lora_dropout, bias=q.bias,
         task_type=q.task_type, target_modules=list(q.target_modules)))
     model.print_trainable_parameters()
+
+    world = int(os.environ.get("WORLD_SIZE", "1"))
+    steps_per_epoch = math.ceil(len(train_ds) / (t.per_device_train_batch_size * t.gradient_accumulation_steps * world))
+    total_steps = args.max_steps if args.max_steps > 0 else math.ceil(steps_per_epoch * t.num_train_epochs)
+    warmup_steps = int(t.warmup_ratio * total_steps) if t.warmup_ratio < 1 else int(t.warmup_ratio)
 
     targs = TrainingArguments(
         output_dir=args.output_dir or t.output_dir,
@@ -90,7 +103,9 @@ def main():
         max_steps=args.max_steps,
         learning_rate=t.learning_rate,
         weight_decay=t.weight_decay,
-        warmup_steps=t.warmup_ratio,  # a value < 1 is a fraction of the total steps
+        # warmup_ratio was removed in transformers 5 and older releases reject a float warmup_steps,
+        # so pass the warmup as a whole number of steps (works on both).
+        warmup_steps=warmup_steps,
         lr_scheduler_type=t.lr_scheduler_type,
         optim="adamw_torch",
         max_grad_norm=t.max_grad_norm,

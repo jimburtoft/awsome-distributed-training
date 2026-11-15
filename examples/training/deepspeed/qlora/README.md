@@ -186,36 +186,42 @@ target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
 | Optimizer | paged_adamw_8bit | Memory-efficient |
 | Precision | bfloat16 | Mixed precision |
 
-## AWS Trainium
+## bf16 LoRA + FSDP2 (GPUs and AWS Trainium)
 
-QLoRA depends on bitsandbytes 4-bit kernels and DeepSpeed, which have no AWS Neuron backend. On AWS Trainium (trn2), [`neuron/`](neuron) runs the same fine-tuning task with the closest native equivalent: the same Qwen3-8B model, dataset, prompt format and LoRA settings (read from the same `configs/*.yaml`), with these changes:
+[`src/train_lora_fsdp2.py`](src/train_lora_fsdp2.py) runs the same fine-tuning task without bitsandbytes or DeepSpeed, using only PyTorch, Hugging Face Transformers and PEFT. The same script runs on NVIDIA GPUs and on AWS Trainium (PyTorch Native, AWS Neuron SDK 2.33). It reads the same `configs/*.yaml` and uses the same model, dataset, prompt format and LoRA settings.
 
-| QLoRA on GPU | AWS Trainium |
+| QLoRA (`src/train.py`) | bf16 LoRA + FSDP2 (`src/train_lora_fsdp2.py`) |
 |---|---|
 | NF4 weights (bitsandbytes) | bf16 weights |
 | DeepSpeed ZeRO-2/3 | PyTorch FSDP2 through the Hugging Face Trainer, wrapping `Qwen3DecoderLayer` |
 | `paged_adamw_8bit` | PyTorch AdamW |
-| Dynamic padding | Fixed-length padding to `max_seq_length`, so every step reuses the compiled graphs |
+| Dynamic padding | Fixed-length padding to `max_seq_length` (needed on Trainium, where each new shape is compiled) |
 
-Sharding the bf16 weights across NeuronCores replaces the memory saving that 4-bit quantization provides: a single `trn2.3xlarge` (4 logical NeuronCores, 96 GB of device memory) fits Qwen3-8B with FSDP2.
+FSDP2 sharding of the bf16 weights replaces the memory saving of 4-bit quantization, so this variant needs more accelerator memory in total. Qwen3-8B fits on 4 GPUs with 40 GB or more each, or on one `trn2.3xlarge` (4 logical NeuronCores, 96 GB).
+
+```bash
+# GPUs: inside this example's GPU image (Dockerfile)
+torchrun --nproc_per_node=4 src/train_lora_fsdp2.py --config_path configs/training_config_zero2.yaml
+
+# AWS Trainium: image built on the public Neuron SDK 2.33 PyTorch Native image
+docker build -t qlora-neuron -f neuron/Dockerfile .
+enroot import -o qlora-neuron.sqsh dockerd://qlora-neuron:latest
+sbatch neuron/train-neuron.sbatch                    # trn2.48xlarge: 64 processes per node
+NPROC_PER_NODE=4 sbatch neuron/train-neuron.sbatch --max_steps 20 --max_samples 400   # trn2.3xlarge test run
+```
 
 | File | Purpose |
 |---|---|
-| [`neuron/Dockerfile`](neuron/Dockerfile) | Image built on the public Neuron SDK 2.33 PyTorch Native image |
-| [`neuron/train_lora_fsdp.py`](neuron/train_lora_fsdp.py) | bf16 LoRA + FSDP2 training script; reuses `src/config.py` and `src/data_preparation.py` |
-| [`neuron/train-neuron.sbatch`](neuron/train-neuron.sbatch) | Slurm (Pyxis) job |
+| [`src/train_lora_fsdp2.py`](src/train_lora_fsdp2.py) | bf16 LoRA + FSDP2 training script (GPU and Trainium); reuses `src/config.py` and `src/data_preparation.py` |
+| [`neuron/Dockerfile`](neuron/Dockerfile) | Trainium image on the public Neuron SDK 2.33 PyTorch Native image |
+| [`neuron/train-neuron.sbatch`](neuron/train-neuron.sbatch) | Slurm (Pyxis) job for Trainium |
 
-```bash
-docker build -t qlora-neuron -f neuron/Dockerfile .
-enroot import -o qlora-neuron.sqsh dockerd://qlora-neuron:latest
+Tested with Qwen3-0.6B (10 steps, `max_seq_length` 512, adapter saved) on:
 
-# trn2.48xlarge: 64 processes; trn2.3xlarge: NPROC_PER_NODE=4
-sbatch neuron/train-neuron.sbatch
-# Short test run
-NPROC_PER_NODE=4 sbatch neuron/train-neuron.sbatch --max_steps 20 --max_samples 400
-```
+- 1x NVIDIA L40S, with this example's GPU stack (NGC PyTorch 25.04, transformers 4.57).
+- AWS Trainium1 HyperPod, 1 and 2x `ml.trn1n.32xlarge` (32 and 64 ranks, SDK 2.33 image, transformers 5.22). This is testing only; see the trn1 link below for the settings.
 
-The adapter is written to `${OUTPUT_DIR}/final_adapter` and can be loaded with `src/inference_demo.py` like the QLoRA adapter.
+The adapter is written to `${OUTPUT_DIR}/final_adapter` and can be loaded with `src/inference_demo.py` like the QLoRA adapter. On Trainium1 (trn1), which is included for testing only, see [PyTorch Native on AWS Trainium1](../../../../docs/neuron-trn1-pytorch-native.md).
 
 ## Infrastructure
 
