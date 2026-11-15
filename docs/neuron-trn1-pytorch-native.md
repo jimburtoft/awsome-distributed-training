@@ -19,11 +19,11 @@ public.ecr.aws/neuron/torch-neuronx:2.14.0-neuronx-py314-sdk2.33.0-ubuntu26.04
 | Instance | Neuron devices | NeuronCores (ranks per node) | HBM per NeuronCore | EFA interfaces |
 |---|---|---|---|---|
 | `trn1.2xlarge` | 1 | 2 | 16 GiB | -- |
-| `trn1.32xlarge` | 16 | 32 | 16 GiB | 8 |
+| `trn1.32xlarge` | 16 | 32 | 16 GiB | 8 (single-node testing only) |
 | `trn1n.32xlarge` | 16 | 32 | 16 GiB | 16 |
 
 Run one process per NeuronCore. `neuron-ls --json-output` reports the NeuronCore count (`nc_count` per
-device) and the instance type.
+device) and the instance type. For multi-node tests, use `trn1n.32xlarge`.
 
 ## Recommended settings
 
@@ -34,7 +34,7 @@ Set these on trn1 only. On trn2, keep the defaults.
 | `TORCH_NEURONX_INT64_MODE` | `packed` | `native` (default) | Distributed jobs (DDP, FSDP) |
 | `NEURON_LAUNCH_BLOCKING` | `1` | unset | Jobs that combine `torch.compile` with collectives |
 | Optimizer | foreach AdamW (`torch.optim.AdamW(..., fused=False)`; Hugging Face Trainer: `--optim adamw_torch`) | default | Jobs that use AdamW |
-| Attention | eager attention (Hugging Face: `attn_implementation="eager"`) | default | Transformer models |
+| Attention | Hugging Face models: `attn_implementation="eager"`. Direct `scaled_dot_product_attention` calls: an additive causal mask filled with the dtype's minimum, not `is_causal=True`, `-inf` or a boolean mask | default | Transformer models |
 | Random initialization and dropout | create tensors on the CPU, then move them to the NeuronCore; dropout 0 | default | Models that initialize weights on the device or train with dropout |
 
 An example README states which of these rows it needs. Rows that an example does not mention do not
@@ -44,4 +44,4 @@ apply to it.
 
 | Example | Settings | Tested on |
 |---|---|---|
-| [`examples/training/ddp`](../examples/training/ddp/README.md#aws-trainium) | `TORCH_NEURONX_INT64_MODE=packed` | `trn1.2xlarge`, 2 ranks |
+| [`examples/training/ddp`](../examples/training/ddp/README.md#aws-trainium) | `TORCH_NEURONX_INT64_MODE=packed` | `trn1.2xlarge`; HyperPod 2x `ml.trn1n.32xlarge` |
