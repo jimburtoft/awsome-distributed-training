@@ -146,6 +146,42 @@ def train(
                 break
             
 
+def init_materialized_model(model):
+    """Initialize a model that was built on the meta device, sharded, and materialized with to_empty().
+
+    to_empty() only allocates memory. Each parameter is initialized the way the Hugging Face model's
+    _init_weights() does it (normal(0, initializer_range) for weights, zeros for biases, ones for norms),
+    drawn on the CPU with one seed on every rank and then copied into this rank's shard. Drawing on the CPU
+    keeps the initialization identical across backends (some accelerators have no on-device RNG for this).
+    The rotary inv_freq buffers are recomputed separately because they are not parameters.
+    initialize_weights() is not used because it does nothing in some transformers releases (4.57).
+    """
+    from torch.distributed.tensor import DTensor, distribute_tensor
+
+    std = getattr(model.config, "initializer_range", 0.02)
+    gen = torch.Generator().manual_seed(1234)
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            if name.endswith("bias"):
+                full = torch.zeros(param.shape)
+            elif "norm" in name.split(".")[-2] or param.dim() == 1:
+                full = torch.ones(param.shape)
+            else:
+                full = torch.empty(param.shape).normal_(0.0, std, generator=gen)
+            full = full.to(param.dtype)
+            if isinstance(param, DTensor):
+                param.copy_(distribute_tensor(full.to(param.device), param.device_mesh, param.placements))
+            else:
+                param.copy_(full)
+        for module in model.modules():
+            if hasattr(module, "rope_init_fn") and hasattr(module, "inv_freq"):
+                inv_freq, _ = module.rope_init_fn(module.config, torch.device("cpu"))
+                module.inv_freq.copy_(inv_freq.to(module.inv_freq.device))
+                module.original_inv_freq = module.inv_freq
+    if getattr(model.config, "tie_word_embeddings", False):
+        model.tie_weights()
+
+
 def use_neuron():
     # AWS Trainium (PyTorch Native / TorchNeuron). Opt-in so GPU behavior is unchanged.
     return os.environ.get("FSDP_DEVICE", "").lower() == "neuron"
@@ -220,7 +256,7 @@ def main(args):
     # to_empty() only allocates memory; without initialization the parameters (and the rotary
     # inv_freq buffers) hold whatever was in device memory.
     model.to_empty(device=torch.device("neuron", int(os.environ["LOCAL_RANK"])) if use_neuron() else torch.device("cuda"))
-    model.initialize_weights()
+    init_materialized_model(model)
 
     if global_rank == 0:
         logger.info("Wrapped model with FSDP2")
