@@ -1,7 +1,8 @@
-From c1cabaf6e7283462e3d9d67aeb926605b58e3e72 Mon Sep 17 00:00:00 2001
+From eb7e670b398c0d071206e013a7b3ca7bca1361ab Mon Sep 17 00:00:00 2001
 From: build <build@localhost>
 Date: Sat, 7 Nov 2026 11:15:38 +0000
-Subject: [PATCH] Run with transformers 5 and on AWS Trainium (DEVICE=neuron)
+Subject: [PATCH 1/2] Run with transformers 5 and on AWS Trainium
+ (DEVICE=neuron)
 
 ---
  picotron/context_parallel/cp_communications.py  |  3 ++-
@@ -130,5 +131,5 @@ index 84da4cf..319c4c7 100644
      # Sum up parameters across all PP ranks
      dist.all_reduce(param_counts, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.pp_group)
 -- 
-2.53.0
+2.50.1
 

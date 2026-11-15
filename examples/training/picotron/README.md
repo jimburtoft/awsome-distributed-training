@@ -53,7 +53,7 @@ picotron runs on AWS Trainium (trn2) with [PyTorch Native](https://awsdocs-neuro
 | File | Purpose |
 |---|---|
 | [`neuron/Dockerfile`](neuron/Dockerfile) | Image on the public Neuron SDK 2.33 PyTorch Native image with picotron at the same commit |
-| [`neuron/patches/`](neuron/patches) | One picotron patch: transformers 5 compatibility, optional flash-attn and triton imports, `DEVICE=neuron` |
+| [`neuron/patches/`](neuron/patches) | Two picotron patches, which also run on GPUs: (1) transformers 5 compatibility, optional flash-attn and triton imports, `DEVICE=neuron`; (2) optional explicit causal mask for SDPA (`SDPA_EXPLICIT_MASK=1`, default off) |
 | [`neuron/slurm/train-neuron.sbatch`](neuron/slurm/train-neuron.sbatch) | Slurm (Pyxis) job |
 
 Create a config with `--use_neuron`, which selects the `neuron` backend and the PyTorch attention path. Then build the image and submit:
@@ -67,3 +67,5 @@ NPROC_PER_NODE=64 sbatch neuron/slurm/train-neuron.sbatch
 ```
 
 Data and tensor parallelism work on a single instance. Pipeline and context parallelism send tensors point to point. On Trainium that goes over EFA, so it needs an instance whose Neuron devices have EFA attached (`trn2.48xlarge`); it does not run on `trn2.3xlarge`.
+
+On Trainium1 (trn1), which is included for testing only, set `SDPA_EXPLICIT_MASK=1` along with the settings in [PyTorch Native on AWS Trainium1](../../../docs/neuron-trn1-pytorch-native.md). Tested on HyperPod 2x `ml.trn1n.32xlarge` with SmolLM-1.7B: DP=8 x TP=8 (64 ranks) trained from loss 10.94 to 6.01 in 20 steps. DP=4 x TP=16 (TP groups spanning devices) failed to set up the collectives.
