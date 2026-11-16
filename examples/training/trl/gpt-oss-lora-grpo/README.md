@@ -291,6 +291,8 @@ Measured on one trn2.3xlarge (4 NeuronCores, LNC=2, SDK 2.33) with `openai/gpt-o
 - Steady state: 43.5 s per step (about 377 tokens/s).
 - Over 30 steps, the training loss fell from 1.82 to 1.17 and the mean token accuracy rose from 0.60 to 0.70.
 
+`sft.py` is the same script on GPUs and on Trainium. With a smaller model (Qwen3-0.6B, LoRA, 10 steps) it was also tested on 1x NVIDIA L40S (TRL 0.29, transformers 4.57; loss 2.0) and, for testing only, on HyperPod 2x `ml.trn1n.32xlarge` (64 ranks, FSDP2, packed 1024; loss 2.33 -> 2.00). Trainium1 needs `--optim adamw_torch` (see [PyTorch Native on AWS Trainium1](../../../../docs/neuron-trn1-pytorch-native.md)). On trn1 the steps took about 4 minutes each, so that run checks function, not speed.
+
 The GRPO step (section 4) serves the policy from vLLM, and that is not ported yet. vLLM Neuron has `GptOssForCausalLM`, but a weight-synchronized TRL GRPO loop for a 20B policy needs a trn2.48xlarge.
 
 ## References
