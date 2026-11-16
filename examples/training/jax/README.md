@@ -94,3 +94,6 @@ Known issues in JAX NeuronX 0.10 (SDK 2.33) that the script works around:
 
 - **Tied embedding sharded on the vocabulary axis.** `grad` of `CE(E[tokens] @ E.T)` with `E` sharded `P("model", None)` is wrong (relative error ~20). The same program on CPU devices is correct, and the forward loss is unaffected, so training silently stalls. The script shards the embedding on the hidden dimension, `P(None, "model")`.
 - **`take_along_axis` cross-entropy backward.** With the 1B config sharded on `model`, the backward fails with `NRT_EXEC_OOB` on some batches, even though all token ids are in range. The script uses a one-hot cross-entropy instead. `CE_IMPL=take` restores the original.
+
+The same image runs on Trainium1 (trn1), which is included for testing only. On HyperPod 2x `ml.trn1n.32xlarge` (2 processes, 64 NeuronCores), the 125M config trained from loss 10.55 to 7.03 in 40 steps at about 1.0M tokens/s. The 1B config with model parallelism 8 went from 10.81 to 7.75. trn1 has 16 GiB of HBM per NeuronCore, so use about half the per-device batch of trn2. In the public JAX image, `/etc/rc` contains bare description text that enroot cannot run; delete those lines when you import the image with enroot.
+
