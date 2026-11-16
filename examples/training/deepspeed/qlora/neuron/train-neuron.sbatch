@@ -28,7 +28,7 @@ mkdir -p "$HF_HOME"
 mkdir -p ${OUTPUT_DIR}
 declare -a ARGS=(
     --container-image ${IMAGE}
-    --container-mounts ${OUTPUT_DIR}:${OUTPUT_DIR},${HF_HOME}:${HF_HOME}
+    --container-mounts ${OUTPUT_DIR}:${OUTPUT_DIR},${HF_HOME}:${HF_HOME},$(pwd)/configs:/opt/qlora/configs
     --container-env FI_PROVIDER,FI_EFA_USE_DEVICE_RDMA,FI_EFA_FORK_SAFE,HF_TOKEN,HF_HOME
 )
 
