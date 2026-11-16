@@ -45,3 +45,8 @@ apply to it.
 | Example | Settings | Tested on |
 |---|---|---|
 | [`examples/training/ddp`](../examples/training/ddp/README.md#aws-trainium) | `TORCH_NEURONX_INT64_MODE=packed` | `trn1.2xlarge`; HyperPod 2x `ml.trn1n.32xlarge` |
+| [`examples/training/deepspeed/qlora`](../examples/training/deepspeed/qlora/README.md) (`src/train_lora_fsdp2.py`) | eager attention, dropout 0 | HyperPod 2x `ml.trn1n.32xlarge` |
+| [`examples/training/fsdp`](../examples/training/fsdp/README.md) | eager attention | HyperPod 2x `ml.trn1n.32xlarge` |
+| [`examples/training/picotron`](../examples/training/picotron/README.md) | explicit causal mask (`SDPA_EXPLICIT_MASK=1`) | HyperPod 2x `ml.trn1n.32xlarge` (DP x TP) |
+| [`examples/training/trl/gpt-oss-lora-grpo`](../examples/training/trl/gpt-oss-lora-grpo/README.md) (`sft.py`) | foreach AdamW (`--optim adamw_torch`) | HyperPod 2x `ml.trn1n.32xlarge` |
+
