@@ -49,4 +49,4 @@ apply to it.
 | [`examples/training/fsdp`](../examples/training/fsdp/README.md) | eager attention | HyperPod 2x `ml.trn1n.32xlarge` |
 | [`examples/training/picotron`](../examples/training/picotron/README.md) | explicit causal mask (`SDPA_EXPLICIT_MASK=1`) | HyperPod 2x `ml.trn1n.32xlarge` (DP x TP) |
 | [`examples/training/trl/gpt-oss-lora-grpo`](../examples/training/trl/gpt-oss-lora-grpo/README.md) (`sft.py`) | foreach AdamW (`--optim adamw_torch`) | HyperPod 2x `ml.trn1n.32xlarge` |
-
+| [`examples/training/torchtitan`](../examples/training/torchtitan/slurm/README.md) | CPU-drawn parameter init, `--optimizer.implementation for-loop` | HyperPod 2x `ml.trn1n.32xlarge` (Llama 3 8B) |
