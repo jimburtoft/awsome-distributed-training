@@ -38,11 +38,15 @@ export FI_EFA_FORK_SAFE=1
 export HF_HUB_ETAG_TIMEOUT=60
 ## Streaming allenai/c4 anonymously is rate limited (HTTP 429); export HF_TOKEN before sbatch.
 export HF_TOKEN=${HF_TOKEN:-}
+# Shared Hugging Face cache on FSx, so ranks do not each download from the Hub.
+export HF_CACHE=${HF_CACHE:-/fsx/${USER}/.cache/huggingface}
+mkdir -p "$HF_CACHE"
+export HF_HOME=/hf_cache
 
 declare -a ARGS=(
     --container-image $CONTAINER_IMAGE
-    --container-mounts $FSX_MOUNT
-    --container-env FI_PROVIDER,FI_EFA_USE_DEVICE_RDMA,FI_EFA_FORK_SAFE,HF_HUB_ETAG_TIMEOUT,HF_TOKEN
+    --container-mounts $FSX_MOUNT,$HF_CACHE:/hf_cache
+    --container-env FI_PROVIDER,FI_EFA_USE_DEVICE_RDMA,FI_EFA_FORK_SAFE,HF_HUB_ETAG_TIMEOUT,HF_TOKEN,HF_HOME
 )
 
 declare -a TORCHRUN_ARGS=(
@@ -64,4 +68,4 @@ if [ -d "/opt/sagemaker_cluster" ]; then
     echo "Detected Hyperpod cluster.. enabling --auto-resume=1"
     AUTO_RESUME="--auto-resume=1"
 fi
-srun ${AUTO_RESUME} -l "${ARGS[@]}" torchrun "${TORCHRUN_ARGS[@]}" /opt/fsdp/train.py "${TRAINING_ARGS[@]}"
+srun ${AUTO_RESUME} -l "${ARGS[@]}" torchrun "${TORCHRUN_ARGS[@]}" /opt/fsdp/train.py "${TRAINING_ARGS[@]}" "$@"
