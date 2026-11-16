@@ -21,12 +21,15 @@ export FI_PROVIDER=efa
 export FI_EFA_USE_DEVICE_RDMA=1
 export FI_EFA_FORK_SAFE=1
 export HF_TOKEN=${HF_TOKEN:-}
+# Shared Hugging Face cache on FSx, so ranks do not each download from the Hub.
+export HF_HOME=${HF_HOME:-/fsx/${USER}/.cache/huggingface}
+mkdir -p "$HF_HOME"
 
 mkdir -p ${OUTPUT_DIR}
 declare -a ARGS=(
     --container-image ${IMAGE}
-    --container-mounts ${OUTPUT_DIR}:${OUTPUT_DIR}
-    --container-env FI_PROVIDER,FI_EFA_USE_DEVICE_RDMA,FI_EFA_FORK_SAFE,HF_TOKEN
+    --container-mounts ${OUTPUT_DIR}:${OUTPUT_DIR},${HF_HOME}:${HF_HOME}
+    --container-env FI_PROVIDER,FI_EFA_USE_DEVICE_RDMA,FI_EFA_FORK_SAFE,HF_TOKEN,HF_HOME
 )
 
 declare -a TORCHRUN_ARGS=(
