@@ -19,12 +19,15 @@ MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 export FI_PROVIDER=efa
 export FI_EFA_USE_DEVICE_RDMA=1
 export FI_EFA_FORK_SAFE=1
+# Shared Hugging Face cache on FSx, so ranks do not each download from the Hub.
+export HF_HOME=${HF_HOME:-/fsx/${USER}/.cache/huggingface}
+mkdir -p "$HF_HOME"
 
 declare -a SRUN_ARGS=(
     --container-image $PWD/picotron-neuron.sqsh
-    --container-mounts "$PWD"
+    --container-mounts "$PWD","$HF_HOME"
     --container-workdir ${PWD}
-    --container-env FI_PROVIDER,FI_EFA_USE_DEVICE_RDMA,FI_EFA_FORK_SAFE,HF_TOKEN
+    --container-env FI_PROVIDER,FI_EFA_USE_DEVICE_RDMA,FI_EFA_FORK_SAFE,HF_TOKEN,HF_HOME
 )
 
 declare -a TORCHRUN_ARGS=(
