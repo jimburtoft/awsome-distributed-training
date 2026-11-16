@@ -144,3 +144,6 @@ Check the Neuron path on a single `trn2.3xlarge` first:
 NPROC_PER_NODE=4 MODULE=neuron_smoke_configs CONFIG=llama3_debug_neuron_sac_compile TP=1 \
   sbatch --nodes 1 2.llama_3_8b_torchtitan_neuron.sh --training.steps 10
 ```
+
+On Trainium1 (trn1), which is included for testing only, see [PyTorch Native on AWS Trainium1](../../../../docs/neuron-trn1-pytorch-native.md). torchtitan initializes the sharded parameters on the device, so trn1 also needs the parameters initialized from CPU-drawn values, along with `--optimizer.implementation for-loop`. With those settings, `llama3_8b_fullac_compile` (TP=8, FSDP=8) trained from loss 12.24 to 7.52 in 20 steps on HyperPod 2x `ml.trn1n.32xlarge`.
+
