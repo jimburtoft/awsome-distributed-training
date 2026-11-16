@@ -24,6 +24,7 @@ import os
 import sys
 
 import torch
+from accelerate import PartialState
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 
@@ -70,11 +71,14 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    train_raw, eval_raw = load_medical_dataset(
-        dataset_name=d.dataset_name, config_name=d.dataset_config,
-        max_samples=args.max_samples or d.max_samples, train_split=d.train_split)
-    train_ds = preprocess_dataset(train_raw, tokenizer, max_length=m.max_seq_length)
-    eval_ds = preprocess_dataset(eval_raw, tokenizer, max_length=m.max_seq_length)
+    # Prepare the dataset on the main process first; the other ranks then read the shared cache. With a cache on
+    # shared storage (FSx), ranks writing the same cache files at once fail with missing .arrow files.
+    with PartialState().main_process_first():
+        train_raw, eval_raw = load_medical_dataset(
+            dataset_name=d.dataset_name, config_name=d.dataset_config,
+            max_samples=args.max_samples or d.max_samples, train_split=d.train_split)
+        train_ds = preprocess_dataset(train_raw, tokenizer, max_length=m.max_seq_length)
+        eval_ds = preprocess_dataset(eval_raw, tokenizer, max_length=m.max_seq_length)
 
     # Load in float32 and let FSDP2 mixed precision (bf16=True) run the forward and backward in bf16. FSDP2 needs one
     # parameter dtype per wrapped module, and the LoRA weights PEFT adds are float32. The float32 copy is sharded
