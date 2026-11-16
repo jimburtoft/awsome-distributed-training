@@ -61,8 +61,11 @@ Create a config with `--use_neuron`, which selects the `neuron` backend and the 
 ```bash
 docker build -t picotron-neuron -f neuron/Dockerfile .
 enroot import -o picotron-neuron.sqsh dockerd://picotron-neuron:latest
-python create_config.py --use_neuron --out_dir conf --exp_name smollm-neuron \
-    --model_name HuggingFaceTB/SmolLM-1.7B --dp 16 --tp 4 --seq_len 1024 --mbs 2 --hf_token ${HF_TOKEN}
+# create_config.py imports picotron, so run it in the image (it also downloads the model to HF_HOME)
+export HF_HOME=/fsx/${USER}/.cache/huggingface
+srun -N1 --container-image=$PWD/picotron-neuron.sqsh --container-mounts=$PWD,$HF_HOME --container-workdir=$PWD \
+    --container-env=HF_TOKEN,HF_HOME python3 /opt/picotron/create_config.py --use_neuron --out_dir conf \
+    --exp_name smollm-neuron --model_name HuggingFaceTB/SmolLM-1.7B --dp 16 --tp 4 --seq_len 1024 --mbs 2 --hf_token ${HF_TOKEN}
 NPROC_PER_NODE=64 sbatch neuron/slurm/train-neuron.sbatch
 ```
 
