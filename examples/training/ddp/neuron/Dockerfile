@@ -4,6 +4,9 @@
 # AWS Trainium (trn2) image for the PyTorch DDP example: Neuron SDK 2.33, PyTorch Native (torch 2.14 + torch-neuronx).
 # The base image pins torch through PIP_CONSTRAINT, so extras cannot replace the Neuron build of torch.
 FROM public.ecr.aws/neuron/torch-neuronx:2.14.0-neuronx-py314-sdk2.33.0-ubuntu26.04
+# The base image's description label spans several lines; enroot (Pyxis) copies labels into /etc/rc
+# and a multi-line value breaks container start. An empty label avoids it.
+LABEL org.opencontainers.image.description=""
 
 # torchvision without dependencies, so it does not pull a CUDA build of torch.
 RUN pip install --no-cache-dir --no-deps torchvision==0.29.0 \
