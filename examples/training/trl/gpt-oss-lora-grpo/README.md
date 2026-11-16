@@ -267,6 +267,7 @@ kubectl exec fsx-storage-manager -- cat /fsx/experiments/grpo_eval_checkpoint{ch
 |------|---------|
 | `neuron/Dockerfile` | `FROM public.ecr.aws/neuron/torch-neuronx:2.14.0-neuronx-py314-sdk2.33.0-ubuntu26.04` with transformers 5.22.1, TRL 1.6.0, PEFT 0.21.2 |
 | `neuron/train-lora-neuron.yaml-template` | Kubeflow `PyTorchJob` with `torchrun`, Neuron and EFA resources |
+| `neuron/slurm/train-lora-neuron.sbatch` | The same job for Slurm (SageMaker HyperPod Slurm, Pyxis) |
 
 ```bash
 docker build -f neuron/Dockerfile -t ${REGISTRY}gpt-oss-neuron:latest . && docker push ${REGISTRY}gpt-oss-neuron:latest
